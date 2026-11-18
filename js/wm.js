@@ -208,6 +208,7 @@ export class WindowManager {
       reboot: ctx.reboot,
       bootImage: ctx.bootImage,
       vmNetLabel: ctx.vmNetLabel,
+      applyWallpaper: ctx.applyWallpaper,
     };
 
     try {

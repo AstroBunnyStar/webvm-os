@@ -13,6 +13,9 @@ import { sysmonApp } from "./apps/sysmon.js";
 import { desktopApp } from "./apps/desktop.js";
 import { calculatorApp } from "./apps/calculator.js";
 import { aboutApp } from "./apps/about.js";
+import { welcomeApp } from "./apps/welcome.js";
+import { imageName } from "./images.js";
+import { WALLPAPERS, DEFAULT_WALLPAPER, wallpaperById } from "./wallpapers.js";
 
 const APPS = [
   linuxApp,
@@ -27,6 +30,7 @@ const APPS = [
   calculatorApp,
   settingsApp,
   aboutApp,
+  welcomeApp,
 ];
 const appById = new Map(APPS.map((app) => [app.id, app]));
 
@@ -50,6 +54,9 @@ const trayClock = $("#tray-clock");
 const trayNet = $("#tray-net");
 const activitiesBtn = $("#activities");
 const systemBtn = $("#system-btn");
+const desktopIcons = $("#desktop-icons");
+const splashFoot = $("#splash-foot");
+const smOs = $("#sm-os");
 
 const NET_LABELS = { wsproxy: "relay", wisp: "wisp", fetch: "http", none: "offline" };
 const netLabel = () => NET_LABELS[settings.backend] || settings.backend;
@@ -58,6 +65,7 @@ const vmNetLabel = () => (vm.phase === "running" ? netLabel() : "idle");
 /* ---------- dock ---------- */
 const launchers = new Map();
 for (const app of APPS) {
+  if (app.launcher === false) continue;
   const btn = document.createElement("button");
   btn.className = "dock-item";
   btn.type = "button";
@@ -98,13 +106,47 @@ function notify(message, kind = "") {
   }, 4200);
 }
 
+/* ---------- wallpaper & desktop icons ---------- */
+function applyWallpaper(id = settings.wallpaper) {
+  const el = $("#wallpaper");
+  if (!el) return;
+  const wallpaper = wallpaperById(id) || DEFAULT_WALLPAPER;
+  el.style.background = wallpaper.css;
+}
+
+const DESKTOP_ICONS = [
+  { id: "linux", label: "Machine" },
+  { id: "files", label: "Files" },
+  { id: "catalog", label: "Software" },
+  { id: "desktop", label: "Desktop (X11)" },
+  { id: "settings", label: "Settings" },
+  { id: "about", label: "About" },
+];
+
+function renderDesktopIcons() {
+  if (!desktopIcons) return;
+  desktopIcons.innerHTML = "";
+  for (const entry of DESKTOP_ICONS) {
+    const app = appById.get(entry.id);
+    if (!app) continue;
+    const btn = document.createElement("button");
+    btn.className = "desk-icon";
+    btn.type = "button";
+    btn.title = app.title;
+    btn.innerHTML = `<span class="di-glyph">${app.icon}</span><span class="di-label"></span>`;
+    btn.querySelector(".di-label").textContent = entry.label;
+    btn.addEventListener("click", () => open(entry.id));
+    desktopIcons.appendChild(btn);
+  }
+}
+
 /* ---------- app launching ---------- */
 function open(id) {
   const spec = appById.get(id);
   if (!spec) return;
   hideGrid();
   hideSystemMenu();
-  return wm.open(spec, { vm, settings, saveSettings, open, notify, reboot, bootImage, vmNetLabel });
+  return wm.open(spec, { vm, settings, saveSettings, open, notify, reboot, bootImage, vmNetLabel, applyWallpaper });
 }
 
 function toggleApp(id) {
@@ -178,6 +220,7 @@ function renderGrid() {
   gridApps.innerHTML = "";
   const term = gridSearch.value.trim().toLowerCase();
   for (const app of APPS) {
+    if (app.launcher === false) continue;
     if (term && !app.title.toLowerCase().includes(term)) continue;
     const btn = document.createElement("button");
     btn.className = "grid-app";
@@ -222,6 +265,7 @@ function updateSystemInfo() {
   $("#sm-net").textContent = netLabel();
   $("#sm-mem").textContent = `${settings.memoryMB} MB`;
   $("#sm-state").textContent = vm.phase;
+  if (smOs) smOs.textContent = `${imageName(settings.imageUrl)} · x86`;
   trayNet.textContent = `net: ${netLabel()}`;
 }
 function showSystemMenu() {
@@ -283,11 +327,15 @@ document.addEventListener("keydown", (e) => {
 });
 
 /* ---------- go ---------- */
-window.webvm = { vm, wm, settings, open, notify, bootImage, reboot };
+window.webvm = { vm, wm, settings, open, notify, bootImage, reboot, applyWallpaper, WALLPAPERS };
+applyWallpaper();
+renderDesktopIcons();
+if (splashFoot) splashFoot.textContent = `${imageName(settings.imageUrl)} · 32-bit x86 · v86 engine`;
 updateSystemInfo();
 open("linux");
+if (!settings.welcomeSeen) open("welcome");
 bootVM();
 setTimeout(() => {
   if (splashDismissed) return;
-  splashStatus.textContent = "Still loading — the 48 MB image is downloaded once and cached by the browser.";
+  splashStatus.textContent = "Still loading — the boot image is downloaded once and cached by the browser.";
 }, 9000);

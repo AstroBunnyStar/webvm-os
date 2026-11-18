@@ -1,5 +1,6 @@
 // Settings: machine size, network backend, boot image.
 import { IMAGES, DEFAULT_IMAGE, imageByUrl } from "../images.js";
+import { WALLPAPERS, DEFAULT_WALLPAPER } from "../wallpapers.js";
 
 export const settingsApp = {
   id: "settings",
@@ -46,6 +47,8 @@ export const settingsApp = {
           </select>
         </label>
       </div>
+      <label class="field" style="margin-bottom:6px"><span>Wallpaper</span></label>
+      <div class="wp-grid" data-el="wallpapers"></div>
       <label class="field" data-el="relay-field"><span>Relay URL</span>
         <input type="text" data-el="relay" spellcheck="false" />
       </label>
@@ -78,6 +81,28 @@ export const settingsApp = {
     const image = root.querySelector('[data-el="image"]');
     const file = root.querySelector('[data-el="file"]');
     const fileNote = root.querySelector('[data-el="file-note"]');
+    const wallsEl = root.querySelector('[data-el="wallpapers"]');
+
+    const renderWallpapers = () => {
+      wallsEl.innerHTML = "";
+      for (const wallpaper of WALLPAPERS) {
+        const tile = document.createElement("button");
+        tile.type = "button";
+        tile.className = `wp-tile${api.settings.wallpaper === wallpaper.id ? " active" : ""}`;
+        tile.title = wallpaper.name;
+        tile.innerHTML = '<span class="wp-swatch"></span><span class="wp-name"></span>';
+        tile.querySelector(".wp-swatch").style.background = wallpaper.css;
+        tile.querySelector(".wp-name").textContent = wallpaper.name;
+        tile.addEventListener("click", () => {
+          api.settings.wallpaper = wallpaper.id;
+          api.saveSettings(api.settings);
+          api.applyWallpaper(wallpaper.id);
+          renderWallpapers();
+        });
+        wallsEl.appendChild(tile);
+      }
+    };
+    renderWallpapers();
 
     memory.value = String(s.memoryMB);
     nic.value = s.nic;
@@ -151,6 +176,9 @@ export const settingsApp = {
       scale.value = "1";
       image.value = DEFAULT_IMAGE.url;
       syncPreset();
+      api.settings.wallpaper = DEFAULT_WALLPAPER.id;
+      api.applyWallpaper(DEFAULT_WALLPAPER.id);
+      renderWallpapers();
     });
 
     api.win.body.appendChild(root);

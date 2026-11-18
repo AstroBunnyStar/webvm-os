@@ -2,6 +2,13 @@
 const STORE_KEY = "webvm.settings.v1";
 const MOUNT_TAG = "hostshare";
 
+/** Guest command that brings eth0 up and points apk at the online Alpine mirrors. */
+export const NETWORK_SETUP_CMD =
+  "ip link set eth0 up; udhcpc -i eth0 -n; " +
+  "grep -q dl-cdn /etc/apk/repositories || echo https://dl-cdn.alpinelinux.org/alpine/v3.21/main >> /etc/apk/repositories; " +
+  "grep -q community /etc/apk/repositories || echo https://dl-cdn.alpinelinux.org/alpine/v3.21/community >> /etc/apk/repositories; apk update";
+
+
 export const DEFAULT_SETTINGS = {
   memoryMB: 512,
   nic: "ne2k",
@@ -11,6 +18,8 @@ export const DEFAULT_SETTINGS = {
   imageUrl: "media/alpine-virt-x86.iso",
   imageName: "Alpine Linux 3.21 (virt, x86)",
   scale: 1,
+  wallpaper: "aubergine",
+  welcomeSeen: false,
 };
 
 export function loadSettings() {
@@ -212,5 +221,10 @@ export class LinuxVM {
 
   mountHint() {
     return `mkdir -p /mnt/host && mount -t 9p -o trans=virtio,version=9p2000.L ${MOUNT_TAG} /mnt/host`;
+  }
+
+  /** Bring the guest network up and refresh its package index. */
+  networkSetup() {
+    return this.command(NETWORK_SETUP_CMD);
   }
 }

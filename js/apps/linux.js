@@ -1,4 +1,6 @@
 // The Linux machine window: v86 screen, toolbar and boot progress.
+import { imageName } from "../images.js";
+
 export const linuxApp = {
   id: "linux",
   title: "Machine",
@@ -9,6 +11,7 @@ export const linuxApp = {
 
   mount(api) {
     const { vm } = api;
+    const osName = imageName(api.settings.imageUrl);
     const root = document.createElement("div");
     root.className = "vm-wrap";
     root.innerHTML = `
@@ -16,6 +19,7 @@ export const linuxApp = {
         <button class="btn sm" data-act="restart" title="Reboot the guest">⟲ Restart</button>
         <button class="btn sm" data-act="pause">⏸ Pause</button>
         <button class="btn sm" data-act="cad" title="Send Ctrl+Alt+Del">Ctrl+Alt+Del</button>
+        <button class="btn sm" data-act="net" title="Bring eth0 up, take a DHCP lease and add the online Alpine mirrors">🌐 Network</button>
         <span class="spacer"></span>
         <button class="btn sm" data-act="scale" title="Zoom the emulated display">1×</button>
         <button class="btn sm" data-act="shot" title="Save a PNG of the guest screen">Screenshot</button>
@@ -28,7 +32,7 @@ export const linuxApp = {
         </div>
         <div class="vm-overlay">
           <div class="spin"></div>
-          <div class="boot-title">Starting Alpine Linux…</div>
+          <div class="boot-title">Starting ${osName}…</div>
           <div class="boot-sub">Loading the emulated machine.</div>
           <div class="bar"><i></i></div>
           <button class="btn primary" data-act="retry" hidden>Try again</button>
@@ -112,7 +116,7 @@ export const linuxApp = {
         fill.style.width = `${Math.max(2, vm.progress)}%`;
       } else if (phase === "booting" || phase === "idle") {
         title.textContent = "Booting the kernel";
-        sub.textContent = "SeaBIOS is starting Alpine Linux. A cold boot usually takes 30–90 seconds.";
+        sub.textContent = `SeaBIOS is starting ${osName}. A cold boot usually takes 30–90 seconds.`;
         fill.style.width = "100%";
       } else if (phase === "paused") {
         title.textContent = "Machine paused";
@@ -127,6 +131,11 @@ export const linuxApp = {
 
     root.querySelector('[data-act="restart"]').addEventListener("click", () => vm.restart());
     root.querySelector('[data-act="cad"]').addEventListener("click", () => vm.ctrlAltDel());
+    root.querySelector('[data-act="net"]').addEventListener("click", () => {
+      if (!vm.running) { api.notify("Wait for the machine to finish booting", "err"); return; }
+      vm.networkSetup();
+      api.notify("Network setup typed into the guest — log in as root first");
+    });
     pauseBtn.addEventListener("click", () => (vm.phase === "paused" ? vm.resume() : vm.pause()));
     scaleBtn.addEventListener("click", () => {
       scale = scale >= 2 ? 1 : scale === 1 ? 1.5 : 2;

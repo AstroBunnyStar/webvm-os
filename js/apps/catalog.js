@@ -1,4 +1,6 @@
 // Software catalogue: one click types the right apk command into the running guest.
+import { NETWORK_SETUP_CMD as SETUP_CMD } from "../vm.js";
+
 const CATALOG = [
   { name: "Python 3 + pip", glyph: "🐍", pkg: "python3 py3-pip", cmd: "apk add --no-cache python3 py3-pip", note: "CPython inside the Linux machine. Then run python3." },
   { name: "Git", glyph: "🌿", pkg: "git", cmd: "apk add --no-cache git", note: "Clone repositories straight into the guest." },
@@ -13,13 +15,6 @@ const CATALOG = [
   { name: "OpenSSH client", glyph: "🔑", pkg: "openssh", cmd: "apk add --no-cache openssh", note: "ssh and scp from inside the VM." },
   { name: "Ruby", glyph: "💎", pkg: "ruby", cmd: "apk add --no-cache ruby", note: "The Ruby interpreter." },
 ];
-
-const MIRROR = "https://dl-cdn.alpinelinux.org/alpine/v3.21/main";
-const MIRROR_COMMUNITY = "https://dl-cdn.alpinelinux.org/alpine/v3.21/community";
-const SETUP_CMD =
-  "ip link set eth0 up; udhcpc -i eth0 -n; " +
-  `grep -q dl-cdn /etc/apk/repositories || echo ${MIRROR} >> /etc/apk/repositories; ` +
-  `grep -q community /etc/apk/repositories || echo ${MIRROR_COMMUNITY} >> /etc/apk/repositories; apk update`;
 
 export const catalogApp = {
   id: "catalog",

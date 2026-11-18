@@ -11,6 +11,7 @@
 <body>
   <div id="desktop">
     <div id="wallpaper"></div>
+    <div id="desktop-icons" aria-label="Desktop icons"></div>
     <div id="windows"></div>
 
     <nav id="dock" aria-label="Dock"></nav>
@@ -19,14 +20,14 @@
       <div class="grid-inner">
         <input id="grid-search" type="text" placeholder="Type to search applications…" autocomplete="off" spellcheck="false" />
         <div id="grid-apps" class="grid-apps"></div>
-        <p class="grid-hint">Press <kbd>Esc</kbd> to close · <kbd>Super</kbd> opens this overview</p>
+        <p class="grid-hint">Press <kbd>Esc</kbd> to close · <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>A</kbd> opens this overview</p>
       </div>
     </div>
 
     <div id="system-menu" hidden>
       <div class="sm-head">
         <div class="sm-avatar">🐧</div>
-        <div class="sm-id"><strong>WebVM</strong><small>Alpine Linux · x86</small></div>
+        <div class="sm-id"><strong>WebVM</strong><small id="sm-os">Alpine Linux · x86</small></div>
       </div>
       <div class="sm-row"><span>Network</span><b id="sm-net">relay</b></div>
       <div class="sm-row"><span>Memory</span><b id="sm-mem">512 MB</b></div>
@@ -53,7 +54,7 @@
         <p class="splash-sub">A complete desktop, running entirely in your browser</p>
         <div class="splash-bar"><i id="splash-fill"></i></div>
         <p id="splash-status" class="splash-status">Preparing the machine…</p>
-        <p class="splash-foot">Alpine Linux · 32-bit x86 · v86 engine</p>
+        <p class="splash-foot" id="splash-foot">Alpine Linux · 32-bit x86 · v86 engine</p>
       </div>
     </div>
 
