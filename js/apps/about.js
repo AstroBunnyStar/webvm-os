@@ -40,10 +40,9 @@ export const aboutApp = {
       <p><code>ip link set eth0 up && udhcpc -i eth0</code></p>
       <p>The live ISO only has a repository on the CD, so add the online mirror once:</p>
       <p><code>echo https://dl-cdn.alpinelinux.org/alpine/v3.21/main &gt;&gt; /etc/apk/repositories &amp;&amp; apk update</code></p>
-      <p>The relay hands out one address per tab, so a machine restored from a snapshot keeps an
-      address the relay no longer routes. Press <b>🌐 Network</b> after a restore: it gives the guest
-      a new MAC and a new DHCP lease (the button does this every time, which is also a quick fix if a
-      shared relay goes quiet).</p>
+      <p>The relay hands out one address per tab, so a machine restored from a snapshot can come back
+      holding a lease it no longer routes. Press <b>🌐 Network</b> after a restore to ask for a fresh
+      one; if the shared relay still will not answer, <b>Restart</b> gives the guest a new connection.</p>
       <p>Then <code>wget</code>, <code>apk add</code>, <code>git clone</code> and <code>python3</code> work over TCP.
       The <b>Software</b> app does that setup for you with one button.</p>
 
