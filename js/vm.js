@@ -6,14 +6,10 @@ const STORE_KEY = "webvm.settings.v1";
 const MOUNT_TAG = "hostshare";
 
 // A snapshot is the guest's whole RAM (about 150 MB here), so autosave is a coarse safety net:
-// every five minutes, and on leaving the tab only if nothing was written recently. 💾 Save in the
+// every five minutes, and on unload only if the last one is a couple of minutes old. 💾 Save in the
 // Machine window is the precise, immediate option.
 const AUTOSAVE_MS = 5 * 60_000;
 const LEAVE_SAVE_MIN_MS = 2 * 60_000;
-// Only these backends hand the guest a lease from somewhere else (a relay or WISP server), so only
-// they can come back from a snapshot pointing at an address that is no longer reachable. The
-// browser-fetch backend answers each request from this tab and needs no lease at all.
-const LEASE_BACKENDS = new Set(["wsproxy", "wisp"]);
 // Every v86 state blob starts with this magic number; anything else cannot be restored.
 const V86_STATE_MAGIC = -2039052682;
 
@@ -72,17 +68,14 @@ export class LinuxVM {
     this.listeners = new Set();
     this.mountedPath = null;
     this.saving = false;
-    this.lastSaveAt = 0;
-    this.lastSaveBytes = 0;
-    this.savedSnapshot = null;
+    this.snapshot = null; // { savedAt, bytes } of the snapshot on disk, for the status bar
     this.restoring = false;
     this.restoredFrom = 0;
     this.networkStale = false;
     this.autosaveTimer = 0;
 
-    // Closing or reloading the tab hides it first, so try a last snapshot on the way out.
-    // The IndexedDB write may not finish during unload — that is what the timer is for.
-    document.addEventListener("visibilitychange", () => { if (document.hidden) this.saveOnExit(); });
+    // Only a real unload writes on the way out. Hiding the tab does not: switching tabs all day
+    // must not snapshot the machine.
     window.addEventListener("pagehide", () => this.saveOnExit());
   }
 
@@ -109,6 +102,14 @@ export class LinuxVM {
     if (s.backend === "wisp") { device.relay_url = s.wispUrl || "wisp://localhost:12345"; return device; }
     device.relay_url = s.relayUrl || DEFAULT_SETTINGS.relayUrl;
     return device;
+  }
+
+  /**
+   * True when the guest's address comes from a relay or WISP server rather than this tab. Mirrors
+   * netDevice(): browser-fetch answers requests itself and offline has no network at all.
+   */
+  usesServerLease() {
+    return this.settings.backend !== "none" && this.settings.backend !== "fetch";
   }
 
   async destroy() {
@@ -158,10 +159,11 @@ export class LinuxVM {
     if (!snapshot) await deleteSnapshot().catch(() => undefined);
     this.restoring = !!snapshot;
     this.restoredFrom = snapshot ? snapshot.savedAt : 0;
+    this.snapshot = snapshot ? { savedAt: snapshot.savedAt, bytes: snapshot.blob.byteLength } : null;
     // A relay/WISP lease belongs to the old connection, so a restored guest may come back holding
-    // an address nothing routes. The UI must not claim the network works in that case.
-    this.networkStale = !!snapshot && LEASE_BACKENDS.has(s.backend || "wsproxy");
-    this.savedSnapshot = snapshot ? { savedAt: snapshot.savedAt, bytes: snapshot.blob.byteLength } : null;
+    // an address nothing routes. Pressing Network cannot confirm it worked, so the flag lasts until
+    // a cold boot rather than turning into a claim that the guest is online.
+    this.networkStale = !!snapshot && this.usesServerLease();
 
     this.phase = "loading";
     this.progress = 0;
@@ -256,10 +258,10 @@ export class LinuxVM {
     this.autosaveTimer = 0;
   }
 
-  /** Best-effort snapshot when the tab is hidden or closing, unless one was just written. */
+  /** Best-effort snapshot on unload, unless one was written in the last couple of minutes. */
   saveOnExit() {
     if (this.phase !== "running" || this.saving) return;
-    if (this.lastSaveAt && Date.now() - this.lastSaveAt < LEAVE_SAVE_MIN_MS) return;
+    if (this.snapshot && Date.now() - this.snapshot.savedAt < LEAVE_SAVE_MIN_MS) return;
     this.saveState({ silent: true });
   }
 
@@ -294,9 +296,7 @@ export class LinuxVM {
       await writeSnapshot(record);
       // Clear the flag before announcing: listeners render the status bar from it.
       this.saving = false;
-      this.lastSaveAt = record.savedAt;
-      this.lastSaveBytes = record.bytes;
-      this.savedSnapshot = { savedAt: record.savedAt, bytes: record.bytes };
+      this.snapshot = { savedAt: record.savedAt, bytes: record.bytes };
       this.emit({
         type: "save", state: "saved", silent, at: record.savedAt, bytes: record.bytes,
         ms: Math.round(performance.now() - started),
@@ -315,9 +315,7 @@ export class LinuxVM {
   /** Throw the saved machine away and cold-boot a fresh guest. */
   async resetMachine(screenContainer) {
     this.stopAutosave();
-    this.lastSaveAt = 0;
-    this.lastSaveBytes = 0;
-    this.savedSnapshot = null;
+    this.snapshot = null;
     await deleteSnapshot().catch(() => undefined);
     this.emit({ type: "save", state: "cleared" });
     return this.boot(screenContainer, { resume: false });

@@ -105,9 +105,8 @@ export const linuxApp = {
     const clock = (ms) => new Date(ms).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
     const snapshotStatus = () => {
       if (vm.saving) return "state: saving…";
-      if (vm.lastSaveAt) return `state: saved ${clock(vm.lastSaveAt)}${vm.lastSaveBytes ? ` · ${formatBytes(vm.lastSaveBytes)}` : ""}`;
       if (vm.restoring) return "state: restoring saved session";
-      if (vm.savedSnapshot) return `state: saved ${clock(vm.savedSnapshot.savedAt)}`;
+      if (vm.snapshot) return `state: saved ${clock(vm.snapshot.savedAt)} · ${formatBytes(vm.snapshot.bytes)}`;
       return "state: fresh machine";
     };
 
