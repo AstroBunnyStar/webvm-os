@@ -13,6 +13,18 @@ const LEAVE_SAVE_MIN_MS = 2 * 60_000;
 // Every v86 state blob starts with this magic number; anything else cannot be restored.
 const V86_STATE_MAGIC = -2039052682;
 
+/**
+ * Typed into the guest after the host has reopened the relay socket: ask for a lease, then prove it
+ * with a real HTTP fetch. The verdict goes out on the guest's serial port, which the host reads
+ * back — no screen scraping, and nothing has to be installed in the guest.
+ */
+export function reconnectCommand() {
+  return (
+    "ip link set eth0 up; udhcpc -i eth0 -n -t 3; " +
+    "wget -T 8 -q -O /dev/null http://example.com && echo NET-OK > /dev/ttyS0 || echo NET-FAIL > /dev/ttyS0"
+  );
+}
+
 /** Guest command that brings eth0 up and points apk at the online Alpine mirrors. */
 export const NETWORK_SETUP_CMD =
   "ip link set eth0 up; udhcpc -i eth0 -n; " +
@@ -72,6 +84,9 @@ export class LinuxVM {
     this.restoring = false;
     this.restoredFrom = 0;
     this.networkStale = false;
+    this.reconnecting = false;
+    this.reconnectTimer = 0;
+    this.serialBuffer = "";
     this.autosaveTimer = 0;
 
     // Only a real unload writes on the way out. Hiding the tab does not: switching tabs all day
@@ -216,6 +231,15 @@ export class LinuxVM {
     });
     emulator.add_listener("screen-set-size", (size) => {
       this.emit({ type: "screen", size });
+    });
+    // The guest writes the result of a reconnect to /dev/ttyS0; that is the only reliable way to
+    // know whether it really got online, and the UART needs nothing installed in the guest.
+    this.serialBuffer = "";
+    emulator.add_listener("serial0-output-byte", (byte) => {
+      this.serialBuffer = (this.serialBuffer + String.fromCharCode(byte & 0xff)).slice(-200);
+      if (!this.reconnecting) return;
+      if (this.serialBuffer.includes("NET-OK")) this.finishReconnect("online");
+      else if (this.serialBuffer.includes("NET-FAIL")) this.finishReconnect("failed");
     });
 
     return emulator;
@@ -378,5 +402,44 @@ export class LinuxVM {
   /** Bring the guest network up and refresh its package index. */
   networkSetup() {
     return this.command(NETWORK_SETUP_CMD);
+  }
+
+  /**
+   * Ask the guest for a fresh lease after a restore (or when the relay goes quiet). The outcome
+   * arrives on the serial port; an unanswered attempt times out after two minutes.
+   */
+  /**
+   * The relay ties its address to the tab's WebSocket session, so a socket opened before a snapshot
+   * restore never routes the restored guest. Closing and reopening it makes the relay treat this tab
+   * as a new client; the guest then only has to ask for a lease.
+   */
+  refreshRelaySocket() {
+    const adapter = this.emulator && this.emulator.network_adapter;
+    if (!adapter || typeof adapter.change_proxy !== "function") return false;
+    adapter.change_proxy(adapter.url);
+    adapter.last_connect_attempt = 0;
+    adapter.connect();
+    return true;
+  }
+
+  reconnectNetwork() {
+    if (!this.emulator || this.phase !== "running") return false;
+    this.reconnecting = true;
+    this.serialBuffer = "";
+    this.emit({ type: "net", state: "reconnecting" });
+    this.refreshRelaySocket();
+    this.command(reconnectCommand());
+    clearTimeout(this.reconnectTimer);
+    this.reconnectTimer = setTimeout(() => this.finishReconnect("timeout"), 120_000);
+    return true;
+  }
+
+  finishReconnect(state) {
+    if (!this.reconnecting) return;
+    this.reconnecting = false;
+    clearTimeout(this.reconnectTimer);
+    this.reconnectTimer = 0;
+    if (state === "online") this.networkStale = false;
+    this.emit({ type: "net", state });
   }
 }

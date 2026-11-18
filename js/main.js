@@ -226,7 +226,7 @@ vm.on((event) => {
         const at = new Date(vm.restoredFrom).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
         vm.restoredFrom = 0;
         bootAnnounced = true;
-        const hint = settings.backend === "none" ? "" : " — press 🌐 Network if the guest needs the internet";
+        const hint = settings.backend === "none" ? "" : " — press 🔌 Reconnect if the guest needs the internet";
         notify(`Resumed the machine you saved at ${at}${hint}`);
       } else if (!bootAnnounced) {
         bootAnnounced = true;

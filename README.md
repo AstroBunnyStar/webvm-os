@@ -91,10 +91,12 @@ relay `wss://relay.widgetry.org/` (shared, so slow). Options in **Settings**:
 
 DNS is answered over DNS-over-HTTPS by v86. Ping only reaches the virtual router; TCP is fully proxied.
 
-The relay gives each tab connection one address, so a machine restored from a snapshot can come back
-holding a lease it no longer routes. Press **🌐 Network** after a restore to ask for a fresh one; if
-the shared relay still will not answer, **Restart** gives the guest a new connection (at the cost of
-the restored session).
+The relay ties its address to the tab's WebSocket session, so a machine restored from a snapshot can
+come back holding a lease it no longer routes — and DHCP for that connection goes unanswered.
+**🔌 Reconnect** in the Machine window is the fix: it reopens the relay socket (making the relay treat
+the tab as a new client), types a lease request into the guest, and checks a real HTTP fetch. The
+verdict arrives over the guest's serial port, so the status bar stops saying *guest may be offline*
+only when that fetch actually succeeded.
 
 ### A graphical Linux desktop inside the machine
 

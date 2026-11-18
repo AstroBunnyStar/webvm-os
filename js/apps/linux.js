@@ -21,6 +21,7 @@ export const linuxApp = {
         <button class="btn sm" data-act="pause">⏸ Pause</button>
         <button class="btn sm" data-act="cad" title="Send Ctrl+Alt+Del">Ctrl+Alt+Del</button>
         <button class="btn sm" data-act="net" title="Bring eth0 up, take a DHCP lease and add the online Alpine mirrors">🌐 Network</button>
+        <button class="btn sm" data-act="reconnect" title="Reopen the relay connection and ask the guest for a fresh lease (types into its console), then test a real fetch">🔌 Reconnect</button>
         <button class="btn sm" data-act="paste" title="Type the contents of your clipboard into the guest">📋 Paste</button>
         <button class="btn sm" data-act="save" title="Save the machine now so a reload resumes it — autosave only runs every five minutes">💾 Save</button>
         <button class="btn sm" data-act="reset" title="Discard the saved machine and cold-boot a fresh one">🧹 Reset</button>
@@ -62,6 +63,7 @@ export const linuxApp = {
     const sMem = root.querySelector(".s-mem");
     const sSnap = root.querySelector(".s-snap");
     const saveBtn = root.querySelector('[data-act="save"]');
+    const reconnectBtn = root.querySelector('[data-act="reconnect"]');
     const scaleBtn = root.querySelector('[data-act="scale"]');
     const pauseBtn = root.querySelector('[data-act="pause"]');
     const screen = root.querySelector(".vm-screen");
@@ -125,6 +127,10 @@ export const linuxApp = {
         : "";
       sMem.textContent = `${api.settings.memoryMB} MB RAM`;
       sSnap.textContent = snapshotStatus();
+      // The reconnect recipe types a shell loop, so it only makes sense with a relay-issued lease.
+      reconnectBtn.hidden = !vm.usesServerLease();
+      reconnectBtn.disabled = !!vm.reconnecting;
+      reconnectBtn.textContent = vm.reconnecting ? "🔌 Reconnecting…" : "🔌 Reconnect";
       pauseBtn.textContent = phase === "paused" ? "▶ Resume" : "⏸ Pause";
       spinner.style.display = phase === "error" ? "none" : "";
       retry.hidden = phase !== "error";
@@ -174,6 +180,11 @@ export const linuxApp = {
       api.notify("Discarding the saved machine and starting fresh…");
       try { await api.resetMachine(); } catch (err) { api.notify((err && err.message) || String(err), "err"); }
     });
+    reconnectBtn.addEventListener("click", () => {
+      if (!vm.running) { api.notify("Wait for the machine to finish booting", "err"); return; }
+      if (!vm.reconnectNetwork()) { api.notify("The machine is not running", "err"); return; }
+      api.notify("Asking the guest for a fresh lease — this types into its console");
+    });
     root.querySelector('[data-act="net"]').addEventListener("click", () => {
       if (!vm.running) { api.notify("Wait for the machine to finish booting", "err"); return; }
       vm.networkSetup();
@@ -206,6 +217,11 @@ export const linuxApp = {
 
     scaleBtn.textContent = `${scale}×`;
     vm.on((event) => {
+      if (event.type === "net") {
+        if (event.state === "online") api.notify("The guest is online again");
+        if (event.state === "failed") api.notify("The guest still has no lease — see its console", "err");
+        if (event.state === "timeout") api.notify("No answer from the relay after two minutes", "err");
+      }
       render();
       if (event.type === "screen") requestAnimationFrame(() => { applyFit(); applyTextFit(); });
     });
