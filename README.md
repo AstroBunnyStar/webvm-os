@@ -64,6 +64,19 @@ apk add python3 git nodejs build-base
 
 The **Software** app has a *Set up networking & packages* button that types this sequence for you.
 
+### Sessions survive a reload
+
+The machine is snapshotted into IndexedDB — the guest's RAM, so roughly its memory size. WebVM saves
+about once a minute, when the tab is hidden or closed, and whenever you press **💾 Save** in the
+Machine window; the status bar says when the last snapshot was taken. Opening the site again restores
+that snapshot instead of cold-booting, so packages you installed, programs that were running and your
+shell history are all still there.
+
+**🧹 Reset** in the Machine toolbar (or **Restart machine** anywhere) discards the snapshot and boots a
+fresh guest. Snapshots belong to one browser and one origin: clearing site data, a private window or
+another browser starts clean. The snapshot is the machine — the guest has no disk image, so its RAM is
+where everything lives.
+
 ### How guest networking works
 
 v86's NE2000 card is bridged to the internet through a WebSocket proxy. The default is the public

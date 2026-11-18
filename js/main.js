@@ -152,7 +152,7 @@ function open(id) {
   if (!spec) return;
   hideGrid();
   hideSystemMenu();
-  return wm.open(spec, { vm, settings, saveSettings, open, notify, reboot, bootImage, vmNetLabel, applyWallpaper });
+  return wm.open(spec, { vm, settings, saveSettings, open, notify, reboot, resetMachine, bootImage, vmNetLabel, applyWallpaper });
 }
 
 function toggleApp(id) {
@@ -164,11 +164,13 @@ function toggleApp(id) {
 }
 
 /* ---------- boot ---------- */
-async function bootVM() {
+async function bootVM(opts = {}) {
   const screen = document.querySelector(".vm-screen");
   if (!screen) return;
   try {
-    await vm.boot(screen);
+    // `reset` also forgets the saved machine, so the status bar drops back to "fresh".
+    if (opts.reset) await vm.resetMachine(screen);
+    else await vm.boot(screen, opts);
   } catch (err) {
     vm.phase = "error";
     vm.errorMessage = (err && err.message) || String(err);
@@ -177,7 +179,9 @@ async function bootVM() {
     dismissSplash();
   }
 }
-const reboot = () => bootVM();
+/** Cold boot: the saved machine is discarded, so Restart always gives a clean guest. */
+const resetMachine = () => bootVM({ reset: true });
+const reboot = () => resetMachine();
 
 async function bootImage(url) {
   vm.imageBuffer = null;
@@ -212,7 +216,12 @@ vm.on((event) => {
       setTimeout(dismissSplash, 500);
     } else if (vm.phase === "running") {
       dismissSplash();
-      if (!bootAnnounced) {
+      if (vm.restoredFrom) {
+        const at = new Date(vm.restoredFrom).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+        vm.restoredFrom = 0;
+        bootAnnounced = true;
+        notify(`Resumed the machine you saved at ${at}`);
+      } else if (!bootAnnounced) {
         bootAnnounced = true;
         notify(`${imageName(settings.imageUrl)} is ready — click the Machine screen to use it`);
       }
@@ -224,6 +233,10 @@ vm.on((event) => {
     dismissSplash();
     notify(event.message, "err");
     updateSystemInfo();
+  }
+  // Autosave failures stay quiet: they would repeat every minute.
+  if (event.type === "save" && event.state === "error" && !event.silent) {
+    notify(`Could not save the machine: ${event.message}`, "err");
   }
 });
 
@@ -301,7 +314,7 @@ systemMenu.addEventListener("click", (e) => {
   const act = item.dataset.act;
   if (act === "settings") open("settings");
   if (act === "about") open("about");
-  if (act === "restart") { reboot(); notify("Restarting the machine"); }
+  if (act === "restart") { reboot(); notify("Fresh machine — the saved session was discarded"); }
   if (act === "lock") lockScreen.hidden = false;
   hideSystemMenu();
 });
@@ -343,7 +356,7 @@ desktopMenu.addEventListener("click", (e) => {
   if (act === "settings") open("settings");
   if (act === "about") open("about");
   if (act === "keys") toggleShortcuts();
-  if (act === "restart") { reboot(); notify("Restarting the machine"); }
+  if (act === "restart") { reboot(); notify("Fresh machine — the saved session was discarded"); }
   if (act === "lock") lockScreen.hidden = false;
   hideDesktopMenu();
 });
@@ -468,7 +481,11 @@ document.addEventListener("keydown", (e) => {
 });
 
 /* ---------- go ---------- */
-window.webvm = { vm, wm, settings, open, notify, bootImage, reboot, applyWallpaper, WALLPAPERS };
+window.webvm = {
+  vm, wm, settings, open, notify, bootImage, reboot, resetMachine,
+  saveState: (opts) => vm.saveState(opts),
+  applyWallpaper, WALLPAPERS,
+};
 applyWallpaper();
 renderDesktopIcons();
 if (splashFoot) splashFoot.textContent = `${imageName(settings.imageUrl)} · 32-bit x86 · v86 engine`;
@@ -478,5 +495,7 @@ if (!settings.welcomeSeen) open("welcome");
 bootVM();
 setTimeout(() => {
   if (splashDismissed) return;
-  splashStatus.textContent = "Still loading — the boot image is downloaded once and cached by the browser.";
+  splashStatus.textContent = vm.restoring
+    ? "Still restoring — a large machine takes a few seconds to come back."
+    : "Still loading — the boot image is downloaded once and cached by the browser.";
 }, 9000);

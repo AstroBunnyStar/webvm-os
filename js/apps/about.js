@@ -43,6 +43,17 @@ export const aboutApp = {
       <p>Then <code>wget</code>, <code>apk add</code>, <code>git clone</code> and <code>python3</code> work over TCP.
       The <b>Software</b> app does that setup for you with one button.</p>
 
+      <h3>Saving the machine</h3>
+      <p>The guest is a real PC, so WebVM keeps a snapshot of it in this browser's IndexedDB —
+      roughly the size of the machine's RAM. It autosaves about once a minute and when the tab is
+      hidden or closed, and opening the site again <b>restores that snapshot instead of cold-booting</b>:
+      installed packages, running programs and shell history are all still there.</p>
+      <p><b>💾 Save</b> in the Machine window writes one immediately, and the status bar shows when the
+      last one was taken. <b>🧹 Reset</b> (or <b>Restart machine</b>) discards the snapshot and boots a
+      fresh guest. Snapshots belong to this browser and this site: clearing site data, a private
+      window, or another browser gives you a clean machine. They are not a virtual disk — the guest's
+      RAM is its only storage, so the snapshot is the machine.</p>
+
       <h3>Honest limits</h3>
       <ul>
         <li>It is a 32-bit PC running in software: expect roughly a 1990s–2000s PC of performance.</li>
@@ -50,7 +61,8 @@ export const aboutApp = {
         64-bit Raspberry Pi Desktop for PC needs a 64-bit kernel and a multi-gigabyte image. The
         <b>Raspberry Pi</b> app explains this and where to run it instead.</li>
         <li>Minecraft Java Edition cannot run here — it needs a 64-bit CPU, a GPU with OpenGL and several GB of RAM.</li>
-        <li>The guest is live media: changes live in RAM. Reboot the window and it is a fresh machine.</li>
+        <li>The guest is live media: changes live in RAM. WebVM snapshots that RAM so a reload resumes
+        it, but <b>Restart</b> or <b>Reset</b> starts a fresh machine.</li>
         <li>1 GB+ of RAM needs a desktop browser with enough headroom; 512 MB is the sweet spot.</li>
       </ul>
 

@@ -1,6 +1,15 @@
-// Controller around the v86 x86 emulator: boot, input, screenshots, 9p transfers.
+// Controller around the v86 x86 emulator: boot, input, screenshots, 9p transfers, snapshots.
+import { imageName } from "./images.js";
+import { readSnapshot, writeSnapshot, deleteSnapshot } from "./state.js";
+
 const STORE_KEY = "webvm.settings.v1";
 const MOUNT_TAG = "hostshare";
+
+// A snapshot is the guest's whole RAM, so autosave is deliberately coarse: once a minute,
+// plus whenever the tab is hidden or closing. Save in the Machine window for an exact point.
+const AUTOSAVE_MS = 60_000;
+// Every v86 state blob starts with this magic number; anything else cannot be restored.
+const V86_STATE_MAGIC = -2039052682;
 
 /** Guest command that brings eth0 up and points apk at the online Alpine mirrors. */
 export const NETWORK_SETUP_CMD =
@@ -56,6 +65,18 @@ export class LinuxVM {
     this.imageBuffer = null;
     this.listeners = new Set();
     this.mountedPath = null;
+    this.saving = false;
+    this.lastSaveAt = 0;
+    this.lastSaveBytes = 0;
+    this.savedSnapshot = null;
+    this.restoring = false;
+    this.restoredFrom = 0;
+    this.autosaveTimer = 0;
+
+    // Closing or reloading the tab hides it first, so try a last snapshot on the way out.
+    // The IndexedDB write may not finish during unload — that is what the timer is for.
+    document.addEventListener("visibilitychange", () => { if (document.hidden) this.saveOnExit(); });
+    window.addEventListener("pagehide", () => this.saveOnExit());
   }
 
   on(fn) {
@@ -84,6 +105,7 @@ export class LinuxVM {
   }
 
   async destroy() {
+    this.stopAutosave();
     if (this.emulator) {
       const emu = this.emulator;
       this.emulator = null;
@@ -92,19 +114,53 @@ export class LinuxVM {
     }
   }
 
-  async boot(screenContainer) {
+  /** True when a stored snapshot came from this exact machine configuration. */
+  snapshotMatches(record, memoryMB) {
+    const s = this.settings;
+    if (!record || !record.blob) return false;
+    const buffer = record.blob instanceof ArrayBuffer ? record.blob : record.blob.buffer;
+    if (!buffer || buffer.byteLength < 4096) return false;
+    try {
+      // A truncated or foreign buffer would wedge restore_state, and v86 reports nothing for it.
+      if (new Int32Array(buffer, 0, 2)[0] !== V86_STATE_MAGIC) return false;
+    } catch { return false; }
+    return record.imageUrl === s.imageUrl &&
+      record.memoryMB === memoryMB &&
+      (record.nic || "ne2k") === (s.nic || "ne2k") &&
+      (record.backend || "wsproxy") === (s.backend || "wsproxy");
+  }
+
+  /**
+   * Start (or restart) the machine. With `resume`, a snapshot of the same guest is restored
+   * instead of cold-booting, so a page reload continues where the guest was.
+   */
+  async boot(screenContainer, { resume = true } = {}) {
     await this.destroy();
     if (!window.V86) throw new Error("v86 runtime failed to load (vm/libv86.js)");
 
+    const s = this.settings;
+    const memoryMB = Math.max(256, s.memoryMB || 512);
+
+    let snapshot = null;
+    if (resume) {
+      snapshot = await readSnapshot().catch(() => null);
+      if (snapshot && !this.snapshotMatches(snapshot, memoryMB)) snapshot = null;
+    }
+    // A snapshot we cannot use, or one the caller skipped, is stale: drop it rather than
+    // restore an older machine over this one on the next reload.
+    if (!snapshot) await deleteSnapshot().catch(() => undefined);
+    this.restoring = !!snapshot;
+    this.restoredFrom = snapshot ? snapshot.savedAt : 0;
+    this.savedSnapshot = snapshot ? { savedAt: snapshot.savedAt, bytes: snapshot.blob.byteLength } : null;
+
     this.phase = "loading";
     this.progress = 0;
-    this.progressLabel = "Downloading Linux image…";
+    this.progressLabel = snapshot ? "Restoring your saved session…" : "Downloading Linux image…";
     this.emit({ type: "phase" });
 
-    const s = this.settings;
     const options = {
       wasm_path: "vm/v86.wasm",
-      memory_size: Math.max(256, s.memoryMB || 512) * 1024 * 1024,
+      memory_size: memoryMB * 1024 * 1024,
       vga_memory_size: 8 * 1024 * 1024,
       bios: { url: "vm/seabios.bin" },
       vga_bios: { url: "vm/vgabios.bin" },
@@ -116,6 +172,9 @@ export class LinuxVM {
       screen: { container: screenContainer, scaling: 1 },
       filesystem: {}, // virtio-9p share used to hand host files to the guest
       net_device: this.netDevice(),
+      // v86 loads RAM and device state from the snapshot instead of booting the CD.
+      // It takes the state as { buffer }, not a bare ArrayBuffer (a bare one is fetched as a URL).
+      initial_state: snapshot ? { buffer: snapshot.blob } : undefined,
     };
 
     const emulator = new window.V86(options);
@@ -139,7 +198,9 @@ export class LinuxVM {
     });
     emulator.add_listener("emulator-started", () => {
       this.phase = "running";
+      this.restoring = false;
       this.emit({ type: "phase" });
+      this.startAutosave();
     });
     emulator.add_listener("screen-set-size", (size) => {
       this.emit({ type: "screen", size });
@@ -167,6 +228,89 @@ export class LinuxVM {
     this.emulator.run();
     this.phase = "running";
     this.emit({ type: "phase" });
+    this.startAutosave();
+  }
+
+  /* ---------- snapshots ---------- */
+
+  startAutosave() {
+    this.stopAutosave();
+    this.autosaveTimer = setInterval(() => {
+      if (document.hidden || this.phase !== "running" || this.saving) return;
+      this.saveState({ silent: true });
+    }, AUTOSAVE_MS);
+  }
+
+  stopAutosave() {
+    if (this.autosaveTimer) clearInterval(this.autosaveTimer);
+    this.autosaveTimer = 0;
+  }
+
+  /** Best-effort snapshot when the tab is hidden or closing. */
+  saveOnExit() {
+    if (this.phase !== "running" || this.saving) return;
+    if (this.lastSaveAt && Date.now() - this.lastSaveAt < 8000) return;
+    this.saveState({ silent: true });
+  }
+
+  /**
+   * Write the running machine into IndexedDB. Silent saves (timer, page hide) report nothing
+   * on success or failure; an explicit save emits progress for the Machine window.
+   */
+  async saveState({ silent = false } = {}) {
+    const emu = this.emulator;
+    if (!emu || this.phase !== "running") {
+      if (!silent) this.emit({ type: "save", state: "unavailable" });
+      return null;
+    }
+    if (this.saving) return null;
+    this.saving = true;
+    this.emit({ type: "save", state: "saving", silent });
+    const started = performance.now();
+    try {
+      // v86 serialises RAM synchronously inside this call, so expect a short pause here.
+      const blob = await emu.save_state();
+      const s = this.settings;
+      const record = {
+        blob,
+        savedAt: Date.now(),
+        imageUrl: s.imageUrl,
+        imageName: imageName(s.imageUrl),
+        memoryMB: Math.max(256, s.memoryMB || 512),
+        nic: s.nic || "ne2k",
+        backend: s.backend || "wsproxy",
+        bytes: blob.byteLength,
+      };
+      await writeSnapshot(record);
+      // Clear the flag before announcing: listeners render the status bar from it.
+      this.saving = false;
+      this.lastSaveAt = record.savedAt;
+      this.lastSaveBytes = record.bytes;
+      this.savedSnapshot = { savedAt: record.savedAt, bytes: record.bytes };
+      this.emit({
+        type: "save", state: "saved", silent, at: record.savedAt, bytes: record.bytes,
+        ms: Math.round(performance.now() - started),
+      });
+      return record;
+    } catch (err) {
+      const message = (err && err.message) || String(err);
+      this.saving = false;
+      this.emit({ type: "save", state: "error", silent, message });
+      return null;
+    } finally {
+      this.saving = false;
+    }
+  }
+
+  /** Throw the saved machine away and cold-boot a fresh guest. */
+  async resetMachine(screenContainer) {
+    this.stopAutosave();
+    this.lastSaveAt = 0;
+    this.lastSaveBytes = 0;
+    this.savedSnapshot = null;
+    await deleteSnapshot().catch(() => undefined);
+    this.emit({ type: "save", state: "cleared" });
+    return this.boot(screenContainer, { resume: false });
   }
 
   /** Send text as if typed on the guest's US keyboard. */

@@ -527,6 +527,8 @@ p.app-p { margin: 0 0 12px; color: var(--muted); font-size: 12.5px; line-height:
   flex: none;
 }
 .vm-toolbar .spacer { flex: 1; }
+.vm-toolbar .btn[disabled] { opacity: 0.55; cursor: progress; }
+.vm-status .s-snap { margin-left: auto; color: #8f959b; }
 .vm-screen-wrap {
   position: relative;
   flex: 1;

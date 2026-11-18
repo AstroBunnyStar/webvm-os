@@ -1,5 +1,6 @@
 // The Linux machine window: v86 screen, toolbar and boot progress.
 import { imageName } from "../images.js";
+import { formatBytes } from "../store.js";
 
 export const linuxApp = {
   id: "linux",
@@ -21,6 +22,8 @@ export const linuxApp = {
         <button class="btn sm" data-act="cad" title="Send Ctrl+Alt+Del">Ctrl+Alt+Del</button>
         <button class="btn sm" data-act="net" title="Bring eth0 up, take a DHCP lease and add the online Alpine mirrors">🌐 Network</button>
         <button class="btn sm" data-act="paste" title="Type the contents of your clipboard into the guest">📋 Paste</button>
+        <button class="btn sm" data-act="save" title="Save the machine now so a reload resumes it">💾 Save</button>
+        <button class="btn sm" data-act="reset" title="Discard the saved machine and cold-boot a fresh one">🧹 Reset</button>
         <span class="spacer"></span>
         <button class="btn sm" data-act="scale" title="Zoom the emulated display">1×</button>
         <button class="btn sm" data-act="shot" title="Save a PNG of the guest screen">Screenshot</button>
@@ -44,6 +47,7 @@ export const linuxApp = {
         <span><span class="dot"></span><span class="s-phase">starting</span></span>
         <span class="s-net"></span>
         <span class="s-mem"></span>
+        <span class="s-snap"></span>
       </div>`;
 
     const overlay = root.querySelector(".vm-overlay");
@@ -56,6 +60,8 @@ export const linuxApp = {
     const sPhase = root.querySelector(".s-phase");
     const sNet = root.querySelector(".s-net");
     const sMem = root.querySelector(".s-mem");
+    const sSnap = root.querySelector(".s-snap");
+    const saveBtn = root.querySelector('[data-act="save"]');
     const scaleBtn = root.querySelector('[data-act="scale"]');
     const pauseBtn = root.querySelector('[data-act="pause"]');
     const screen = root.querySelector(".vm-screen");
@@ -96,6 +102,15 @@ export const linuxApp = {
       textEl.style.lineHeight = `${px}px`;
     };
 
+    const clock = (ms) => new Date(ms).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    const snapshotStatus = () => {
+      if (vm.saving) return "state: saving…";
+      if (vm.lastSaveAt) return `state: saved ${clock(vm.lastSaveAt)}${vm.lastSaveBytes ? ` · ${formatBytes(vm.lastSaveBytes)}` : ""}`;
+      if (vm.restoring) return "state: restoring saved session";
+      if (vm.savedSnapshot) return `state: saved ${clock(vm.savedSnapshot.savedAt)}`;
+      return "state: fresh machine";
+    };
+
     const render = () => {
       const phase = vm.phase;
       const running = phase === "running";
@@ -107,6 +122,7 @@ export const linuxApp = {
       }[phase] || phase;
       sNet.textContent = `network: ${api.vmNetLabel()}`;
       sMem.textContent = `${api.settings.memoryMB} MB RAM`;
+      sSnap.textContent = snapshotStatus();
       pauseBtn.textContent = phase === "paused" ? "▶ Resume" : "⏸ Pause";
       spinner.style.display = phase === "error" ? "none" : "";
       retry.hidden = phase !== "error";
@@ -142,6 +158,19 @@ export const linuxApp = {
       } catch {
         api.notify("The browser blocked clipboard access", "err");
       }
+    });
+    saveBtn.addEventListener("click", async () => {
+      if (!vm.running) { api.notify("Wait for the machine to finish booting", "err"); return; }
+      saveBtn.disabled = true;
+      const record = await vm.saveState();
+      saveBtn.disabled = false;
+      if (record) api.notify(`Saved ${formatBytes(record.bytes)} of machine state — a reload resumes here`);
+      else api.notify("The machine could not be saved", "err");
+    });
+    root.querySelector('[data-act="reset"]').addEventListener("click", async () => {
+      if (!confirm("Discard the saved machine and cold-boot a fresh guest? Everything in the guest's RAM is lost.")) return;
+      api.notify("Discarding the saved machine and starting fresh…");
+      try { await api.resetMachine(); } catch (err) { api.notify((err && err.message) || String(err), "err"); }
     });
     root.querySelector('[data-act="net"]').addEventListener("click", () => {
       if (!vm.running) { api.notify("Wait for the machine to finish booting", "err"); return; }
