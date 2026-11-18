@@ -120,6 +120,29 @@ export class WindowManager {
         if (win.onResize) win.onResize();
       },
 
+      /** Snap to half the screen ("left"/"right") or fill it ("max"). */
+      snap(kind) {
+        const bounds = manager.layer.getBoundingClientRect();
+        win.prevRect = { width: el.style.width, height: el.style.height, left: el.style.left, top: el.style.top };
+        el.classList.remove("maxed");
+        if (kind === "max") {
+          win.maximised = true;
+          el.classList.add("maxed");
+          el.style.left = "0px";
+          el.style.top = "0px";
+          el.style.width = "100%";
+          el.style.height = "100%";
+        } else {
+          const half = Math.round(bounds.width / 2);
+          win.maximised = false;
+          el.style.width = `${half}px`;
+          el.style.height = "100%";
+          el.style.top = "0px";
+          el.style.left = kind === "left" ? "0px" : `${bounds.width - half}px`;
+        }
+        if (win.onResize) win.onResize();
+      },
+
       close() {
         win.el.remove();
         win.dockItem.classList.remove("running", "active");
@@ -137,7 +160,12 @@ export class WindowManager {
 
     this.wins.set(spec.id, win);
     this.layer.appendChild(el);
-    if (!pinned) this.dock.appendChild(dockItem);
+    if (!pinned) {
+      // Keep running windows before the separator, so the grid button stays last.
+      const separator = this.dock.querySelector(".dock-sep");
+      if (separator) this.dock.insertBefore(dockItem, separator);
+      else this.dock.appendChild(dockItem);
+    }
     win.focus();
     if (this.onStateChange) this.onStateChange(this.wins);
 
@@ -167,9 +195,15 @@ export class WindowManager {
         el.style.left = `${clamp(startLeft + ev.clientX - startX, -el.offsetWidth + 120, bounds.width - 60)}px`;
         el.style.top = `${clamp(startTop + ev.clientY - startY, 0, bounds.height - 40)}px`;
       };
-      const up = () => {
+      const up = (ev) => {
         bar.removeEventListener("pointermove", move);
         bar.removeEventListener("pointerup", up);
+        if (win.maximised || !ev) return;
+        // Dragging into an edge tiles the window, the way a real desktop does.
+        const bounds = this.layer.getBoundingClientRect();
+        if (ev.clientY <= bounds.top + 6) win.snap("max");
+        else if (ev.clientX <= bounds.left + 8) win.snap("left");
+        else if (ev.clientX >= bounds.left + bounds.width - 8) win.snap("right");
       };
       bar.addEventListener("pointermove", move);
       bar.addEventListener("pointerup", up);

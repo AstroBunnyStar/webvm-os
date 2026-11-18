@@ -27,6 +27,7 @@ export const welcomeApp = {
         <li>Log in at the console as <code>root</code> with no password; the prompt looks like <code>localhost:~#</code>.</li>
         <li>Files you send from <b>Files</b> or <b>Downloads</b> appear inside the guest at <code>/mnt/host</code> after the mount command.</li>
         <li><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>T</kbd> reopens the Machine window, <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>A</kbd> opens the app overview.</li>
+        <li><kbd>Alt</kbd>+<kbd>&#96;</kbd> cycles windows (Windows keeps <kbd>Alt</kbd>+<kbd>Tab</kbd> for itself). Drag a title bar to the left or right edge to tile it, or to the top to fill the screen. Right-click the desktop for the system menu.</li>
       </ul>
       <div class="row wrap" style="margin-top:16px">
         <label class="check"><input type="checkbox" data-el="again" /> Show this every time</label>

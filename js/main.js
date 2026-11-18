@@ -57,6 +57,8 @@ const systemBtn = $("#system-btn");
 const desktopIcons = $("#desktop-icons");
 const splashFoot = $("#splash-foot");
 const smOs = $("#sm-os");
+const switcher = $("#switcher");
+const desktopMenu = $("#desktop-menu");
 
 const NET_LABELS = { wsproxy: "relay", wisp: "wisp", fetch: "http", none: "offline" };
 const netLabel = () => NET_LABELS[settings.backend] || settings.backend;
@@ -182,6 +184,7 @@ async function bootImage(url) {
   await bootVM();
 }
 
+let bootAnnounced = false;
 let splashDismissed = false;
 function dismissSplash() {
   if (splashDismissed) return;
@@ -197,6 +200,7 @@ vm.on((event) => {
   }
   if (event.type === "phase") {
     if (vm.phase === "loading") {
+      bootAnnounced = false;
       splashStatus.textContent = vm.progressLabel || "Downloading the Linux image…";
     } else if (vm.phase === "booting") {
       splashFill.style.width = "100%";
@@ -204,6 +208,10 @@ vm.on((event) => {
       setTimeout(dismissSplash, 500);
     } else if (vm.phase === "running") {
       dismissSplash();
+      if (!bootAnnounced) {
+        bootAnnounced = true;
+        notify(`${imageName(settings.imageUrl)} is ready — click the Machine screen to use it`);
+      }
     }
     updateSystemInfo();
   }
@@ -300,6 +308,107 @@ document.addEventListener("pointerdown", (e) => {
 /* ---------- lock screen ---------- */
 lockScreen.addEventListener("click", () => { lockScreen.hidden = true; });
 
+/* ---------- desktop context menu ---------- */
+function hideDesktopMenu() {
+  if (desktopMenu) desktopMenu.hidden = true;
+}
+
+function showDesktopMenu(x, y) {
+  if (!desktopMenu) return;
+  hideGrid();
+  hideSystemMenu();
+  desktopMenu.hidden = false;
+  const rect = desktopMenu.getBoundingClientRect();
+  desktopMenu.style.left = `${Math.min(x, window.innerWidth - rect.width - 8)}px`;
+  desktopMenu.style.top = `${Math.min(y, window.innerHeight - rect.height - 8)}px`;
+}
+
+$("#desktop").addEventListener("contextmenu", (e) => {
+  if (e.target.closest(".win, #dock, #topbar, #system-menu, #app-grid, #desktop-icons")) return;
+  e.preventDefault();
+  showDesktopMenu(e.clientX, e.clientY);
+});
+desktopMenu.addEventListener("click", (e) => {
+  const item = e.target.closest("[data-act]");
+  if (!item) return;
+  const act = item.dataset.act;
+  if (act === "apps") toggleGrid();
+  if (act === "machine") open("linux");
+  if (act === "settings") open("settings");
+  if (act === "about") open("about");
+  if (act === "restart") { reboot(); notify("Restarting the machine"); }
+  if (act === "lock") lockScreen.hidden = false;
+  hideDesktopMenu();
+});
+document.addEventListener("pointerdown", (e) => {
+  if (desktopMenu.hidden || e.target.closest("#desktop-menu")) return;
+  hideDesktopMenu();
+});
+
+/* ---------- window switcher (Alt+Tab) ---------- */
+let switching = false;
+let switchIndex = 0;
+
+// Most recently focused window first.
+function switchCandidates() {
+  return [...wm.wins.values()].sort(
+    (a, b) => (Number(b.el.style.zIndex) || 0) - (Number(a.el.style.zIndex) || 0),
+  );
+}
+
+function renderSwitcher(list) {
+  switcher.innerHTML = "";
+  const box = document.createElement("div");
+  box.className = "sw-box";
+  list.forEach((win, i) => {
+    const row = document.createElement("div");
+    row.className = `sw-row${i === switchIndex ? " active" : ""}`;
+    row.innerHTML = '<span class="sw-icon"></span><span class="sw-title"></span>';
+    row.querySelector(".sw-icon").textContent = win.spec.icon || "▣";
+    row.querySelector(".sw-title").textContent = win.spec.title;
+    box.appendChild(row);
+  });
+  switcher.appendChild(box);
+  switcher.hidden = false;
+}
+
+function cycleWindows() {
+  const list = switchCandidates();
+  if (list.length < 2) return;
+  if (!switching) {
+    switching = true;
+    switchIndex = 1;
+  } else {
+    switchIndex = (switchIndex + 1) % list.length;
+  }
+  renderSwitcher(list);
+}
+
+function endSwitching(commit) {
+  if (!switching) return;
+  const list = switchCandidates();
+  const win = list[switchIndex];
+  switching = false;
+  switcher.hidden = true;
+  if (commit && win) {
+    win.unminimise();
+    win.focus();
+  }
+}
+
+// Alt+` is the portable binding: Windows and most desktops keep Alt+Tab for themselves,
+// so the page never receives it. Alt+Tab still works wherever it does reach us.
+document.addEventListener("keydown", (e) => {
+  if (e.altKey && (e.key === "`" || e.key === "Tab")) {
+    e.preventDefault();
+    e.stopPropagation();
+    cycleWindows();
+  }
+});
+document.addEventListener("keyup", (e) => {
+  if (e.key === "Alt") endSwitching(true);
+});
+
 /* ---------- clock ---------- */
 const pad = (n) => String(n).padStart(2, "0");
 function tickClock() {
@@ -321,7 +430,7 @@ trayClock.addEventListener("click", () => open("sysmon"));
 
 /* ---------- shortcuts ---------- */
 document.addEventListener("keydown", (e) => {
-  if (e.key === "Escape") { hideGrid(); hideSystemMenu(); }
+  if (e.key === "Escape") { hideGrid(); hideSystemMenu(); hideDesktopMenu(); endSwitching(false); }
   if (e.ctrlKey && e.altKey && (e.key === "t" || e.key === "T")) { e.preventDefault(); open("linux"); }
   if (e.ctrlKey && e.altKey && (e.key === "a" || e.key === "A")) { e.preventDefault(); toggleGrid(); }
 });
