@@ -90,6 +90,10 @@ relay `wss://relay.widgetry.org/` (shared, so slow). Options in **Settings**:
 
 DNS is answered over DNS-over-HTTPS by v86. Ping only reaches the virtual router; TCP is fully proxied.
 
+The relay gives each tab connection one address, so a machine restored from a snapshot still holds
+the previous tab's lease and cannot route. Press **🌐 Network** after a restore — it renews the MAC
+and takes a fresh DHCP lease — and the guest is online again.
+
 ### A graphical Linux desktop inside the machine
 
 **Fastest path:** **Desktop (X11) → Boot the graphical desktop**, or **Settings → Operating system →

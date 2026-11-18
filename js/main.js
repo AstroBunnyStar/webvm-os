@@ -220,7 +220,8 @@ vm.on((event) => {
         const at = new Date(vm.restoredFrom).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
         vm.restoredFrom = 0;
         bootAnnounced = true;
-        notify(`Resumed the machine you saved at ${at}`);
+        const hint = settings.backend === "none" ? "" : " — press 🌐 Network if the guest needs the internet";
+        notify(`Resumed the machine you saved at ${at}${hint}`);
       } else if (!bootAnnounced) {
         bootAnnounced = true;
         notify(`${imageName(settings.imageUrl)} is ready — click the Machine screen to use it`);

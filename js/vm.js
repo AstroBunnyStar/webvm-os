@@ -11,11 +11,26 @@ const AUTOSAVE_MS = 60_000;
 // Every v86 state blob starts with this magic number; anything else cannot be restored.
 const V86_STATE_MAGIC = -2039052682;
 
+/** A fresh, locally administered MAC address (02:xx:xx:xx:xx:xx). */
+function freshMac() {
+  const hex = () => Math.floor(Math.random() * 256).toString(16).padStart(2, "0");
+  return ["02", hex(), hex(), hex(), hex(), hex()].join(":");
+}
+
 /** Guest command that brings eth0 up and points apk at the online Alpine mirrors. */
 export const NETWORK_SETUP_CMD =
   "ip link set eth0 up; udhcpc -i eth0 -n; " +
   "grep -q dl-cdn /etc/apk/repositories || echo https://dl-cdn.alpinelinux.org/alpine/v3.21/main >> /etc/apk/repositories; " +
   "grep -q community /etc/apk/repositories || echo https://dl-cdn.alpinelinux.org/alpine/v3.21/community >> /etc/apk/repositories; apk update";
+
+/**
+ * The full recipe typed into the guest for networking. It renews the MAC first: the public relay
+ * gives each tab connection one address, so a machine restored from a snapshot still wears the
+ * previous tab's lease and cannot route until it presents a new MAC and takes a new lease.
+ */
+export function networkSetupCommand() {
+  return `ip link set eth0 down; ip link set eth0 address ${freshMac()}; ip link set eth0 up; ` + NETWORK_SETUP_CMD;
+}
 
 
 export const DEFAULT_SETTINGS = {
@@ -369,6 +384,6 @@ export class LinuxVM {
 
   /** Bring the guest network up and refresh its package index. */
   networkSetup() {
-    return this.command(NETWORK_SETUP_CMD);
+    return this.command(networkSetupCommand());
   }
 }

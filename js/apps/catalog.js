@@ -1,5 +1,5 @@
 // Software catalogue: one click types the right apk command into the running guest.
-import { NETWORK_SETUP_CMD as SETUP_CMD } from "../vm.js";
+import { networkSetupCommand } from "../vm.js";
 
 const CATALOG = [
   { name: "Python 3 + pip", glyph: "🐍", pkg: "python3 py3-pip", cmd: "apk add --no-cache python3 py3-pip", note: "CPython inside the Linux machine. Then run python3." },
@@ -97,10 +97,11 @@ export const catalogApp = {
       cat.appendChild(card);
     }
 
-    root.querySelector('[data-act="setup"]').addEventListener("click", () => typeIt(SETUP_CMD));
+    root.querySelector('[data-act="setup"]').addEventListener("click", () => typeIt(networkSetupCommand()));
     root.querySelector('[data-act="copy-setup"]').addEventListener("click", async () => {
-      try { await navigator.clipboard.writeText(SETUP_CMD); api.notify("Command copied"); }
-      catch { api.notify(SETUP_CMD); }
+      const cmd = networkSetupCommand();
+      try { await navigator.clipboard.writeText(cmd); api.notify("Command copied"); }
+      catch { api.notify(cmd); }
     });
     root.querySelector('[data-act="update"]').addEventListener("click", () => typeIt("apk update"));
     root.querySelector('[data-act="search"]').addEventListener("click", () => {
