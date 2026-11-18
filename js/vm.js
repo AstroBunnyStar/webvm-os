@@ -10,6 +10,10 @@ const MOUNT_TAG = "hostshare";
 // Machine window is the precise, immediate option.
 const AUTOSAVE_MS = 5 * 60_000;
 const LEAVE_SAVE_MIN_MS = 2 * 60_000;
+// Only these backends hand the guest a lease from somewhere else (a relay or WISP server), so only
+// they can come back from a snapshot pointing at an address that is no longer reachable. The
+// browser-fetch backend answers each request from this tab and needs no lease at all.
+const LEASE_BACKENDS = new Set(["wsproxy", "wisp"]);
 // Every v86 state blob starts with this magic number; anything else cannot be restored.
 const V86_STATE_MAGIC = -2039052682;
 
@@ -154,9 +158,9 @@ export class LinuxVM {
     if (!snapshot) await deleteSnapshot().catch(() => undefined);
     this.restoring = !!snapshot;
     this.restoredFrom = snapshot ? snapshot.savedAt : 0;
-    // The relay hands one address to each tab connection, so a restored guest usually comes back
-    // holding a lease the relay no longer routes. The UI must not claim the network works.
-    this.networkStale = !!snapshot && !!s.backend && s.backend !== "none";
+    // A relay/WISP lease belongs to the old connection, so a restored guest may come back holding
+    // an address nothing routes. The UI must not claim the network works in that case.
+    this.networkStale = !!snapshot && LEASE_BACKENDS.has(s.backend || "wsproxy");
     this.savedSnapshot = snapshot ? { savedAt: snapshot.savedAt, bytes: snapshot.blob.byteLength } : null;
 
     this.phase = "loading";
