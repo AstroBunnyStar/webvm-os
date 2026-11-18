@@ -86,6 +86,7 @@
         <p class="splash-sub">A complete desktop, running entirely in your browser</p>
         <div class="splash-bar"><i id="splash-fill"></i></div>
         <p id="splash-status" class="splash-status">Preparing the machine…</p>
+        <button id="splash-retry" class="btn primary" style="margin-top:12px" hidden onclick="location.reload()">Reload the page</button>
         <p class="splash-foot" id="splash-foot">Alpine Linux · 32-bit x86 · v86 engine</p>
       </div>
     </div>
@@ -106,6 +107,25 @@
   </noscript>
 
   <script src="vm/libv86.js"></script>
-  <script type="module" src="js/main.js"></script>
+  <script>
+    // A single failed module fetch (a host hiccup, a flaky network) otherwise leaves the boot
+    // splash sitting on "Preparing the machine…" forever, with nothing to act on.
+    window.__bootFailed = function (reason) {
+      var status = document.getElementById("splash-status");
+      var fill = document.getElementById("splash-fill");
+      var retry = document.getElementById("splash-retry");
+      if (!status || !status.isConnected) return;
+      status.textContent = "A boot file could not be downloaded" + (reason ? " (" + reason + ")" : "") +
+        ". Check your connection, then reload.";
+      if (fill) fill.style.width = "100%";
+      if (retry) retry.hidden = false;
+    };
+  </script>
+  <script type="module" src="js/main.js" onerror="window.__bootFailed && window.__bootFailed('module load error')"></script>
+  <script>
+    window.addEventListener("unhandledrejection", function (event) {
+      if (window.__bootFailed && !window.webvm) window.__bootFailed(String((event.reason && event.reason.message) || event.reason || "").slice(0, 120));
+    });
+  </script>
 </body>
 </html>
