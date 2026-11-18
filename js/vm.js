@@ -5,9 +5,11 @@ import { readSnapshot, writeSnapshot, deleteSnapshot } from "./state.js";
 const STORE_KEY = "webvm.settings.v1";
 const MOUNT_TAG = "hostshare";
 
-// A snapshot is the guest's whole RAM, so autosave is deliberately coarse: once a minute,
-// plus whenever the tab is hidden or closing. Save in the Machine window for an exact point.
-const AUTOSAVE_MS = 60_000;
+// A snapshot is the guest's whole RAM (about 150 MB here), so autosave is a coarse safety net:
+// every five minutes, and on leaving the tab only if nothing was written recently. 💾 Save in the
+// Machine window is the precise, immediate option.
+const AUTOSAVE_MS = 5 * 60_000;
+const LEAVE_SAVE_MIN_MS = 2 * 60_000;
 // Every v86 state blob starts with this magic number; anything else cannot be restored.
 const V86_STATE_MAGIC = -2039052682;
 
@@ -71,6 +73,7 @@ export class LinuxVM {
     this.savedSnapshot = null;
     this.restoring = false;
     this.restoredFrom = 0;
+    this.networkStale = false;
     this.autosaveTimer = 0;
 
     // Closing or reloading the tab hides it first, so try a last snapshot on the way out.
@@ -151,6 +154,9 @@ export class LinuxVM {
     if (!snapshot) await deleteSnapshot().catch(() => undefined);
     this.restoring = !!snapshot;
     this.restoredFrom = snapshot ? snapshot.savedAt : 0;
+    // The relay hands one address to each tab connection, so a restored guest usually comes back
+    // holding a lease the relay no longer routes. The UI must not claim the network works.
+    this.networkStale = !!snapshot && !!s.backend && s.backend !== "none";
     this.savedSnapshot = snapshot ? { savedAt: snapshot.savedAt, bytes: snapshot.blob.byteLength } : null;
 
     this.phase = "loading";
@@ -246,10 +252,10 @@ export class LinuxVM {
     this.autosaveTimer = 0;
   }
 
-  /** Best-effort snapshot when the tab is hidden or closing. */
+  /** Best-effort snapshot when the tab is hidden or closing, unless one was just written. */
   saveOnExit() {
     if (this.phase !== "running" || this.saving) return;
-    if (this.lastSaveAt && Date.now() - this.lastSaveAt < 8000) return;
+    if (this.lastSaveAt && Date.now() - this.lastSaveAt < LEAVE_SAVE_MIN_MS) return;
     this.saveState({ silent: true });
   }
 

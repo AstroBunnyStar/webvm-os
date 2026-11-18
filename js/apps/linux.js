@@ -22,7 +22,7 @@ export const linuxApp = {
         <button class="btn sm" data-act="cad" title="Send Ctrl+Alt+Del">Ctrl+Alt+Del</button>
         <button class="btn sm" data-act="net" title="Bring eth0 up, take a DHCP lease and add the online Alpine mirrors">🌐 Network</button>
         <button class="btn sm" data-act="paste" title="Type the contents of your clipboard into the guest">📋 Paste</button>
-        <button class="btn sm" data-act="save" title="Save the machine now so a reload resumes it">💾 Save</button>
+        <button class="btn sm" data-act="save" title="Save the machine now so a reload resumes it — autosave only runs every five minutes">💾 Save</button>
         <button class="btn sm" data-act="reset" title="Discard the saved machine and cold-boot a fresh one">🧹 Reset</button>
         <span class="spacer"></span>
         <button class="btn sm" data-act="scale" title="Zoom the emulated display">1×</button>
@@ -121,6 +121,9 @@ export const linuxApp = {
         running: "running", paused: "paused", error: "error",
       }[phase] || phase;
       sNet.textContent = `network: ${api.vmNetLabel()}`;
+      sNet.title = vm.networkStale
+        ? "This session came back from a snapshot. The relay gives each tab one address, so the guest may need 🌐 Network (or a Restart) before it can reach the internet."
+        : "";
       sMem.textContent = `${api.settings.memoryMB} MB RAM`;
       sSnap.textContent = snapshotStatus();
       pauseBtn.textContent = phase === "paused" ? "▶ Resume" : "⏸ Pause";

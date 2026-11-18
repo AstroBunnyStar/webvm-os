@@ -65,7 +65,13 @@ const shortcutsEl = $("#shortcuts");
 
 const NET_LABELS = { wsproxy: "relay", wisp: "wisp", fetch: "http", none: "offline" };
 const netLabel = () => NET_LABELS[settings.backend] || settings.backend;
-const vmNetLabel = () => (vm.phase === "running" ? netLabel() : "idle");
+// A snapshot-restored guest keeps its old relay lease, which the relay usually no longer routes,
+// so the configured backend is not evidence that the guest is online.
+const vmNetLabel = () => {
+  if (vm.phase !== "running") return "idle";
+  if (vm.networkStale) return `${netLabel()} · guest may be offline`;
+  return netLabel();
+};
 
 /* ---------- dock ---------- */
 const launchers = new Map();

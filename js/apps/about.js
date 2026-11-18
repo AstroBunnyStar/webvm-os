@@ -48,11 +48,11 @@ export const aboutApp = {
 
       <h3>Saving the machine</h3>
       <p>The guest is a real PC, so WebVM keeps a snapshot of it in this browser's IndexedDB —
-      roughly the size of the machine's RAM. It autosaves about once a minute and when the tab is
-      hidden or closed, and opening the site again <b>restores that snapshot instead of cold-booting</b>:
+      roughly the size of the machine's RAM, which is why autosave is coarse: every five minutes, plus
+      when you leave the tab. Opening the site again <b>restores that snapshot instead of cold-booting</b>:
       installed packages, running programs and shell history are all still there.</p>
-      <p><b>💾 Save</b> in the Machine window writes one immediately, and the status bar shows when the
-      last one was taken. <b>🧹 Reset</b> (or <b>Restart machine</b>) discards the snapshot and boots a
+      <p><b>💾 Save</b> in the Machine window writes one immediately — use it before closing something
+      you care about — and the status bar shows when the last one was taken. <b>🧹 Reset</b> (or <b>Restart machine</b>) discards the snapshot and boots a
       fresh guest. Snapshots belong to this browser and this site: clearing site data, a private
       window, or another browser gives you a clean machine. They are not a virtual disk — the guest's
       RAM is its only storage, so the snapshot is the machine.</p>

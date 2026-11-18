@@ -66,9 +66,10 @@ The **Software** app has a *Set up networking & packages* button that types this
 
 ### Sessions survive a reload
 
-The machine is snapshotted into IndexedDB — the guest's RAM, so roughly its memory size. WebVM saves
-about once a minute, when the tab is hidden or closed, and whenever you press **💾 Save** in the
-Machine window; the status bar says when the last snapshot was taken. Opening the site again restores
+The machine is snapshotted into IndexedDB — the guest's RAM, so roughly its memory size, which is why
+autosave is deliberately coarse: every five minutes and when you leave the tab. **💾 Save** in the
+Machine window writes one immediately; use it for an exact point. The status bar says when the last
+snapshot was taken. Opening the site again restores
 that snapshot instead of cold-booting, so packages you installed, programs that were running and your
 shell history are all still there.
 
