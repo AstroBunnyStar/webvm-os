@@ -94,9 +94,9 @@ DNS is answered over DNS-over-HTTPS by v86. Ping only reaches the virtual router
 The relay ties its address to the tab's WebSocket session, so a machine restored from a snapshot can
 come back holding a lease it no longer routes — and DHCP for that connection goes unanswered.
 **🔌 Reconnect** in the Machine window is the fix: it reopens the relay socket (making the relay treat
-the tab as a new client), types a lease request into the guest, and checks a real HTTP fetch. The
-verdict arrives over the guest's serial port, so the status bar stops saying *guest may be offline*
-only when that fetch actually succeeded.
+the tab as a new client), gives the guest's card a fresh MAC, and keeps asking for a lease until a real
+HTTP fetch succeeds. The verdict arrives over the guest's serial port, so the status bar stops saying
+*guest may be offline* only when that fetch actually succeeded.
 
 ### A graphical Linux desktop inside the machine
 

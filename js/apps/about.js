@@ -42,8 +42,9 @@ export const aboutApp = {
       <p><code>echo https://dl-cdn.alpinelinux.org/alpine/v3.21/main &gt;&gt; /etc/apk/repositories &amp;&amp; apk update</code></p>
       <p>The relay ties its address to the tab's connection, so a machine restored from a snapshot can
       come back holding a lease it no longer routes. <b>🔌 Reconnect</b> fixes that: it reopens the relay
-      socket, types a lease request into the guest and checks a real HTTP fetch, reporting the answer
-      back over the guest's serial port — the status bar only drops the warning if that fetch worked.</p>
+      socket, gives the guest's card a fresh MAC and keeps asking for a lease until a real HTTP fetch
+      succeeds, then reports back over the guest's serial port. The status bar only drops the warning
+      once that fetch has actually worked.</p>
       <p>Then <code>wget</code>, <code>apk add</code>, <code>git clone</code> and <code>python3</code> work over TCP.
       The <b>Software</b> app does that setup for you with one button.</p>
 

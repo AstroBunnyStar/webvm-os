@@ -13,15 +13,25 @@ const LEAVE_SAVE_MIN_MS = 2 * 60_000;
 // Every v86 state blob starts with this magic number; anything else cannot be restored.
 const V86_STATE_MAGIC = -2039052682;
 
+/** A locally administered unicast MAC address (02:xx:xx:xx:xx:xx). */
+function randomMac() {
+  const hex = () => Math.floor(Math.random() * 256).toString(16).padStart(2, "0");
+  return ["02", hex(), hex(), hex(), hex(), hex()].join(":");
+}
+
 /**
- * Typed into the guest after the host has reopened the relay socket: ask for a lease, then prove it
- * with a real HTTP fetch. The verdict goes out on the guest's serial port, which the host reads
- * back — no screen scraping, and nothing has to be installed in the guest.
+ * Typed into the guest after the host has reopened the relay socket. The relay refuses a lease to a
+ * MAC it already has one for, so the card takes a fresh one; then it asks again every few seconds
+ * until a lease arrives and a real HTTP fetch works. The verdict goes out on the guest's serial
+ * port, which the host reads back — no screen scraping, and nothing installed in the guest.
  */
 export function reconnectCommand() {
   return (
-    "ip link set eth0 up; udhcpc -i eth0 -n -t 3; " +
-    "wget -T 8 -q -O /dev/null http://example.com && echo NET-OK > /dev/ttyS0 || echo NET-FAIL > /dev/ttyS0"
+    `ip link set eth0 down; ip link set eth0 address ${randomMac()}; ip link set eth0 up; ` +
+    "ok=0; for i in 1 2 3 4 5 6; do " +
+    "udhcpc -i eth0 -n -t 3 && wget -T 6 -q -O /dev/null http://example.com && ok=1 && break; " +
+    "sleep 8; done; " +
+    "[ $ok = 1 ] && echo NET-OK > /dev/ttyS0 || echo NET-FAIL > /dev/ttyS0"
   );
 }
 
@@ -430,7 +440,7 @@ export class LinuxVM {
     this.refreshRelaySocket();
     this.command(reconnectCommand());
     clearTimeout(this.reconnectTimer);
-    this.reconnectTimer = setTimeout(() => this.finishReconnect("timeout"), 120_000);
+    this.reconnectTimer = setTimeout(() => this.finishReconnect("timeout"), 180_000);
     return true;
   }
 
