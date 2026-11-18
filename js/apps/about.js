@@ -46,6 +46,9 @@ export const aboutApp = {
       <h3>Honest limits</h3>
       <ul>
         <li>It is a 32-bit PC running in software: expect roughly a 1990s–2000s PC of performance.</li>
+        <li><b>Raspberry Pi OS cannot run here.</b> Pi OS 32-bit is ARM code and this is an x86 CPU; the
+        64-bit Raspberry Pi Desktop for PC needs a 64-bit kernel and a multi-gigabyte image. The
+        <b>Raspberry Pi</b> app explains this and where to run it instead.</li>
         <li>Minecraft Java Edition cannot run here — it needs a 64-bit CPU, a GPU with OpenGL and several GB of RAM.</li>
         <li>The guest is live media: changes live in RAM. Reboot the window and it is a fresh machine.</li>
         <li>1 GB+ of RAM needs a desktop browser with enough headroom; 512 MB is the sweet spot.</li>

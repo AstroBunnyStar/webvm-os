@@ -328,6 +328,56 @@ button, input, select, textarea { font-family: inherit; font-size: inherit; colo
 .sw-icon { font-size: 26px; line-height: 1; }
 .sw-title { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
+/* ---------- snap preview ---------- */
+.snap-preview {
+  position: absolute;
+  z-index: 9000;
+  border-radius: var(--radius);
+  border: 2px solid rgba(233, 84, 32, 0.75);
+  background: rgba(233, 84, 32, 0.16);
+  pointer-events: none;
+}
+.snap-preview[hidden] { display: none; }
+
+/* ---------- shortcuts sheet ---------- */
+#shortcuts {
+  position: absolute;
+  inset: 0;
+  z-index: 1450;
+  display: grid;
+  place-items: center;
+  background: rgba(12, 10, 12, 0.55);
+}
+#shortcuts[hidden] { display: none; }
+.sc-card {
+  width: min(560px, 92vw);
+  padding: 20px;
+  border-radius: 16px;
+  background: rgba(32, 28, 32, 0.98);
+  border: 1px solid var(--border-strong);
+  box-shadow: 0 26px 70px rgba(0, 0, 0, 0.6);
+}
+.sc-card h2 { margin: 0 0 14px; font-size: 16px; }
+.sc-grid { display: grid; gap: 6px; }
+.sc-grid > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 7px 10px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.04);
+  font-size: 12.5px;
+  color: #c9c4be;
+}
+.sc-keys { color: var(--text); white-space: nowrap; }
+
+/* ---------- Raspberry Pi app ---------- */
+.pi-list { margin: 8px 0 0; padding-left: 18px; color: #c9c4be; font-size: 12.5px; line-height: 1.7; }
+.pi-list a, a.btn { color: inherit; text-decoration: none; }
+.pi-list a { color: #ff9d7a; }
+a.btn:hover { text-decoration: none; }
+
 /* ---------- lock screen ---------- */
 #lock-screen {
   position: absolute;

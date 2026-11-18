@@ -51,6 +51,7 @@
       <button class="sm-item" data-act="apps"><span>⊞</span>Show applications</button>
       <button class="sm-item" data-act="machine"><span>🖥️</span>Machine</button>
       <button class="sm-item" data-act="settings"><span>⚙️</span>Change wallpaper…</button>
+      <button class="sm-item" data-act="keys"><span>⌨️</span>Keyboard shortcuts</button>
       <div class="sm-sep"></div>
       <button class="sm-item" data-act="restart"><span>⟳</span>Restart machine</button>
       <button class="sm-item" data-act="lock"><span>🔒</span>Lock screen</button>
@@ -58,6 +59,25 @@
     </div>
 
     <div id="switcher" hidden></div>
+
+    <div id="shortcuts" hidden>
+      <div class="sc-card">
+        <h2>Keyboard &amp; mouse</h2>
+        <div class="sc-grid">
+          <div><span class="sc-keys"><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>T</kbd></span><span>Machine window</span></div>
+          <div><span class="sc-keys"><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>A</kbd></span><span>Application overview</span></div>
+          <div><span class="sc-keys"><kbd>Alt</kbd>+<kbd>&#96;</kbd></span><span>Switch between windows</span></div>
+          <div><span class="sc-keys"><kbd>F1</kbd></span><span>Show this sheet</span></div>
+          <div><span class="sc-keys"><kbd>Esc</kbd></span><span>Close menus · release the guest mouse</span></div>
+          <div><span class="sc-keys">Drag to an edge</span><span>Tile the window left or right</span></div>
+          <div><span class="sc-keys">Drag to the top</span><span>Fill the screen</span></div>
+          <div><span class="sc-keys">Right-click desktop</span><span>System menu</span></div>
+        </div>
+        <div class="row" style="justify-content:flex-end;margin-top:16px">
+          <button class="btn primary" data-act="close">Close</button>
+        </div>
+      </div>
+    </div>
 
     <div id="boot-splash">
       <div class="splash-card">

@@ -10,6 +10,7 @@ export class WindowManager {
     this.launchers = launchers || new Map();
     this.wins = new Map();
     this.cascade = 0;
+    this.previewEl = null;
     window.addEventListener("resize", () => this.reflow());
   }
 
@@ -194,16 +195,16 @@ export class WindowManager {
         const bounds = this.layer.getBoundingClientRect();
         el.style.left = `${clamp(startLeft + ev.clientX - startX, -el.offsetWidth + 120, bounds.width - 60)}px`;
         el.style.top = `${clamp(startTop + ev.clientY - startY, 0, bounds.height - 40)}px`;
+        this.showSnapPreview(this.zoneAt(bounds, ev.clientX, ev.clientY));
       };
       const up = (ev) => {
         bar.removeEventListener("pointermove", move);
         bar.removeEventListener("pointerup", up);
+        this.showSnapPreview(null);
         if (win.maximised || !ev) return;
-        // Dragging into an edge tiles the window, the way a real desktop does.
-        const bounds = this.layer.getBoundingClientRect();
-        if (ev.clientY <= bounds.top + 6) win.snap("max");
-        else if (ev.clientX <= bounds.left + 8) win.snap("left");
-        else if (ev.clientX >= bounds.left + bounds.width - 8) win.snap("right");
+        // Dropping on an edge tiles the window, the way a real desktop does.
+        const zone = this.zoneAt(this.layer.getBoundingClientRect(), ev.clientX, ev.clientY);
+        if (zone) win.snap(zone);
       };
       bar.addEventListener("pointermove", move);
       bar.addEventListener("pointerup", up);
@@ -252,6 +253,41 @@ export class WindowManager {
       console.error(err);
     }
     return win;
+  }
+
+  /** Which third of the screen a drag position would snap to, if any. */
+  zoneAt(bounds, x, y) {
+    if (y <= bounds.top + 6) return "max";
+    if (x <= bounds.left + 8) return "left";
+    if (x >= bounds.left + bounds.width - 8) return "right";
+    return null;
+  }
+
+  /** Translucent outline showing where the dragged window will land. */
+  showSnapPreview(zone) {
+    if (!this.previewEl) {
+      this.previewEl = document.createElement("div");
+      this.previewEl.className = "snap-preview";
+      this.previewEl.hidden = true;
+    }
+    if (!this.previewEl.isConnected) this.layer.appendChild(this.previewEl);
+    if (!zone) {
+      this.previewEl.hidden = true;
+      return;
+    }
+    const bounds = this.layer.getBoundingClientRect();
+    const preview = this.previewEl;
+    preview.hidden = false;
+    preview.style.top = "0px";
+    preview.style.height = "100%";
+    if (zone === "max") {
+      preview.style.left = "0px";
+      preview.style.width = "100%";
+    } else {
+      const half = Math.round(bounds.width / 2);
+      preview.style.width = `${half}px`;
+      preview.style.left = zone === "left" ? "0px" : `${bounds.width - half}px`;
+    }
   }
 
   reflow() {

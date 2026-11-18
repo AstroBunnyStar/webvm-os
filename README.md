@@ -19,6 +19,7 @@ from static files, so it runs as-is on GitHub Pages.
 | **Downloads** | Fetch any URL in the browser, save it to your computer or copy it into the guest over a 9p share. |
 | **Software** | One-click setup plus `apk add` for Python, git, node, gcc, vim, htop, ffmpeg, sqlite, ssh, ruby… |
 | **Desktop (X11)** | One click boots the bundled SliTaz desktop, or installs Xorg + Fluxbox into Alpine with an fbdev→VESA fallback and an Xorg-log helper. |
+| **Raspberry Pi** | Straight answers about Pi OS on this machine (spoiler: it is ARM, this is x86), where to run it instead, and a picker for your own 32-bit ISO. |
 | **System Monitor** | Live machine state, uptime, memory and emulated CPU throughput graph. |
 | **Calculator** | Working calculator with keyboard support. |
 | **Settings** | RAM, network backend, display scale, operating system (Alpine or SliTaz), or your own 32-bit ISO. |
@@ -105,8 +106,12 @@ The emulated screen switches to a 1024×768 X session. Click the Terminal surfac
 mouse, press `Esc` to release it. If Xorg refuses to start, the app has a button that prints
 `/var/log/Xorg.0.log` and one that rewrites the config for the VESA driver.
 
-Raspberry Pi OS itself is ARM-only and cannot run in a 32-bit x86 emulator; this is the equivalent
-x86 graphical session.
+Raspberry Pi OS itself cannot run here: Pi OS 32-bit is ARM (`armhf`) code and this machine emulates a
+32-bit x86 CPU, so no Pi image can execute — bundled or supplied by you. The official
+[Raspberry Pi Desktop for PC](https://www.raspberrypi.com/software/raspberry-pi-desktop/) does not fit
+either: the October 2026 release is `amd64` (64-bit) only and about 2.6 GB, while v86 is 32-bit and
+caps the guest at 2 GB of RAM. The **Raspberry Pi** app says all of this in the UI and points at the
+real options. What you get here instead is an equivalent x86 graphical session.
 
 ### Transferring files into the guest
 
@@ -147,6 +152,8 @@ editor and URL bars are safe).
   CPU-only software — Python, gcc, Node, servers, compilers, editors — works, and `apk` can install it.
 * Performance is roughly that of a late-1990s PC. Expect a 30–90 second cold boot.
 * The guest is live media: everything lives in RAM and a restart gives you a clean machine.
+* Raspberry Pi OS (armhf/ARM) and the 64-bit Raspberry Pi Desktop cannot boot in a 32-bit x86 emulator.
+  Any 32-bit x86 ISO you supply yourself works, within browser memory limits.
 * The public relay is shared and rate-limited. For daily use, host your own relay.
 * 1 GB or more of RAM needs a desktop browser with headroom; 512 MB is the default and the sweet spot.
 

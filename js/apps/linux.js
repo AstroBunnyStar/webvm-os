@@ -11,7 +11,7 @@ export const linuxApp = {
 
   mount(api) {
     const { vm } = api;
-    const osName = imageName(api.settings.imageUrl);
+    const osName = vm.pendingImageName || imageName(api.settings.imageUrl);
     const root = document.createElement("div");
     root.className = "vm-wrap";
     root.innerHTML = `
@@ -20,6 +20,7 @@ export const linuxApp = {
         <button class="btn sm" data-act="pause">⏸ Pause</button>
         <button class="btn sm" data-act="cad" title="Send Ctrl+Alt+Del">Ctrl+Alt+Del</button>
         <button class="btn sm" data-act="net" title="Bring eth0 up, take a DHCP lease and add the online Alpine mirrors">🌐 Network</button>
+        <button class="btn sm" data-act="paste" title="Type the contents of your clipboard into the guest">📋 Paste</button>
         <span class="spacer"></span>
         <button class="btn sm" data-act="scale" title="Zoom the emulated display">1×</button>
         <button class="btn sm" data-act="shot" title="Save a PNG of the guest screen">Screenshot</button>
@@ -131,6 +132,17 @@ export const linuxApp = {
 
     root.querySelector('[data-act="restart"]').addEventListener("click", () => vm.restart());
     root.querySelector('[data-act="cad"]').addEventListener("click", () => vm.ctrlAltDel());
+    root.querySelector('[data-act="paste"]').addEventListener("click", async () => {
+      if (!vm.running) { api.notify("Wait for the machine to finish booting", "err"); return; }
+      try {
+        const text = await navigator.clipboard.readText();
+        if (!text) { api.notify("The clipboard is empty"); return; }
+        vm.type(text);
+        api.notify(`Typed ${text.length} characters into the guest`);
+      } catch {
+        api.notify("The browser blocked clipboard access", "err");
+      }
+    });
     root.querySelector('[data-act="net"]').addEventListener("click", () => {
       if (!vm.running) { api.notify("Wait for the machine to finish booting", "err"); return; }
       vm.networkSetup();

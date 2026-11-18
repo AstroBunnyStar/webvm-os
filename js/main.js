@@ -14,6 +14,7 @@ import { desktopApp } from "./apps/desktop.js";
 import { calculatorApp } from "./apps/calculator.js";
 import { aboutApp } from "./apps/about.js";
 import { welcomeApp } from "./apps/welcome.js";
+import { piApp } from "./apps/pi.js";
 import { imageName } from "./images.js";
 import { WALLPAPERS, DEFAULT_WALLPAPER, wallpaperById } from "./wallpapers.js";
 
@@ -26,6 +27,7 @@ const APPS = [
   downloadsApp,
   catalogApp,
   desktopApp,
+  piApp,
   sysmonApp,
   calculatorApp,
   settingsApp,
@@ -59,6 +61,7 @@ const splashFoot = $("#splash-foot");
 const smOs = $("#sm-os");
 const switcher = $("#switcher");
 const desktopMenu = $("#desktop-menu");
+const shortcutsEl = $("#shortcuts");
 
 const NET_LABELS = { wsproxy: "relay", wisp: "wisp", fetch: "http", none: "offline" };
 const netLabel = () => NET_LABELS[settings.backend] || settings.backend;
@@ -121,6 +124,7 @@ const DESKTOP_ICONS = [
   { id: "files", label: "Files" },
   { id: "catalog", label: "Software" },
   { id: "desktop", label: "Desktop (X11)" },
+  { id: "rpi", label: "Raspberry Pi" },
   { id: "settings", label: "Settings" },
   { id: "about", label: "About" },
 ];
@@ -338,6 +342,7 @@ desktopMenu.addEventListener("click", (e) => {
   if (act === "machine") open("linux");
   if (act === "settings") open("settings");
   if (act === "about") open("about");
+  if (act === "keys") toggleShortcuts();
   if (act === "restart") { reboot(); notify("Restarting the machine"); }
   if (act === "lock") lockScreen.hidden = false;
   hideDesktopMenu();
@@ -347,6 +352,29 @@ document.addEventListener("pointerdown", (e) => {
   // e.target is not always an Element (synthetic or document-level events).
   if (e.target instanceof Element && e.target.closest("#desktop-menu")) return;
   hideDesktopMenu();
+});
+
+/* ---------- shortcuts sheet ---------- */
+function toggleShortcuts(force) {
+  if (!shortcutsEl) return;
+  const show = typeof force === "boolean" ? force : shortcutsEl.hidden;
+  shortcutsEl.hidden = !show;
+  if (show) {
+    hideGrid();
+    hideSystemMenu();
+    hideDesktopMenu();
+  }
+}
+
+shortcutsEl.addEventListener("click", (e) => {
+  if (e.target === shortcutsEl) toggleShortcuts(false);
+  else if (e.target instanceof Element && e.target.closest('[data-act="close"]')) toggleShortcuts(false);
+});
+document.addEventListener("keydown", (e) => {
+  if (e.key === "F1" || (e.shiftKey && e.key === "?")) {
+    e.preventDefault();
+    toggleShortcuts();
+  }
 });
 
 /* ---------- window switcher (Alt+Tab) ---------- */
@@ -434,7 +462,7 @@ trayClock.addEventListener("click", () => open("sysmon"));
 
 /* ---------- shortcuts ---------- */
 document.addEventListener("keydown", (e) => {
-  if (e.key === "Escape") { hideGrid(); hideSystemMenu(); hideDesktopMenu(); endSwitching(false); }
+  if (e.key === "Escape") { hideGrid(); hideSystemMenu(); hideDesktopMenu(); endSwitching(false); toggleShortcuts(false); }
   if (e.ctrlKey && e.altKey && (e.key === "t" || e.key === "T")) { e.preventDefault(); open("linux"); }
   if (e.ctrlKey && e.altKey && (e.key === "a" || e.key === "A")) { e.preventDefault(); toggleGrid(); }
 });
