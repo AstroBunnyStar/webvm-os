@@ -302,7 +302,9 @@ systemMenu.addEventListener("click", (e) => {
   hideSystemMenu();
 });
 document.addEventListener("pointerdown", (e) => {
-  if (!systemMenu.hidden && !e.target.closest("#system-menu") && !e.target.closest("#system-btn")) hideSystemMenu();
+  if (systemMenu.hidden) return;
+  if (e.target instanceof Element && (e.target.closest("#system-menu") || e.target.closest("#system-btn"))) return;
+  hideSystemMenu();
 });
 
 /* ---------- lock screen ---------- */
@@ -341,7 +343,9 @@ desktopMenu.addEventListener("click", (e) => {
   hideDesktopMenu();
 });
 document.addEventListener("pointerdown", (e) => {
-  if (desktopMenu.hidden || e.target.closest("#desktop-menu")) return;
+  if (desktopMenu.hidden) return;
+  // e.target is not always an Element (synthetic or document-level events).
+  if (e.target instanceof Element && e.target.closest("#desktop-menu")) return;
   hideDesktopMenu();
 });
 
