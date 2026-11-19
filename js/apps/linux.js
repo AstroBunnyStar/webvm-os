@@ -42,7 +42,7 @@ export const linuxApp = {
           <div class="bar"><i></i></div>
           <button class="btn primary" data-act="retry" hidden>Try again</button>
         </div>
-        <div class="vm-hint">Click the screen to capture the mouse and keyboard · <b>Esc</b> releases it</div>
+        <div class="vm-hint" data-el="hint">Click the screen to capture the mouse and keyboard · <b>Esc</b> releases it</div>
       </div>
       <div class="vm-status">
         <span><span class="dot"></span><span class="s-phase">starting</span></span>
@@ -212,8 +212,29 @@ export const linuxApp = {
     retry.addEventListener("click", () => api.reboot());
     const hint = root.querySelector(".vm-hint");
     const hideHint = () => { hint.style.opacity = "0"; };
-    screen.addEventListener("pointerdown", () => { screen.focus(); hideHint(); });
+    // Capture only makes sense in a graphical mode; in a text console the pointer stays free and a
+    // click just gives the guest the keyboard.
+    const graphical = () => {
+      const canvas = screen.querySelector("canvas");
+      return !!canvas && canvas.width > 320 && getComputedStyle(canvas).display !== "none";
+    };
+    screen.addEventListener("pointerdown", (event) => {
+      screen.focus();
+      hideHint();
+      if (event.button === 0 && !document.pointerLockElement && graphical()) vm.lockMouse();
+    });
     vm.on(() => { if (vm.phase === "running") setTimeout(hideHint, 14000); });
+
+    // While the pointer is captured the browser hides it, so say where it went and how to get it back.
+    const HINT_FREE = "Click the screen to capture the mouse and keyboard · <b>Esc</b> releases it";
+    const HINT_LOCKED = "Mouse captured — the guest cursor follows yours · <b>Esc</b> releases it";
+    const onPointerLock = () => {
+      const locked = !!document.pointerLockElement;
+      hint.innerHTML = locked ? HINT_LOCKED : HINT_FREE;
+      hint.style.opacity = "1";
+      if (!locked) setTimeout(hideHint, 4000);
+    };
+    document.addEventListener("pointerlockchange", onPointerLock);
 
     scaleBtn.textContent = `${scale}×`;
     vm.on((event) => {
@@ -229,7 +250,12 @@ export const linuxApp = {
     api.win.onResize = () => { applyFit(); applyTextFit(); render(); };
     // The guest may switch video modes without us noticing; re-fit periodically.
     const fitTimer = setInterval(() => { applyFit(); applyTextFit(); }, 2000);
-    api.win.onClose = () => clearInterval(fitTimer);
+    api.win.onClose = () => {
+      clearInterval(fitTimer);
+      document.removeEventListener("pointerlockchange", onPointerLock);
+      // Never leave the host pointer captured by a window that is gone.
+      if (document.pointerLockElement) document.exitPointerLock();
+    };
 
     api.win.body.style.overflow = "hidden";
     api.win.body.appendChild(root);

@@ -390,6 +390,23 @@ export class LinuxVM {
     if (container) container.focus();
   }
 
+  /**
+   * Capture the host pointer so the guest cursor keeps receiving movement at the screen's edges
+   * instead of the real pointer wandering off. v86 asks for unadjusted movement first, which keeps
+   * the guest's cursor speed independent of the desktop's pointer acceleration. The browser only
+   * grants this from a user gesture, and Esc always hands the pointer back.
+   */
+  lockMouse() {
+    if (!this.emulator || this.phase !== "running" || document.pointerLockElement) return false;
+    try {
+      const request = this.emulator.lock_mouse();
+      if (request && typeof request.catch === "function") request.catch(() => {});
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   screenshot() {
     if (!this.emulator) return null;
     return this.emulator.screen_make_screenshot();
