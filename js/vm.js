@@ -18,7 +18,7 @@ export const MEMORY_MB = 1024;
 // read it, and GitHub cannot carry 3.4 GB; this edge Worker (edge/worker.js in this repo) proxies the file
 // with byte ranges, CORS, and the boot-sector patch applied as it streams.
 export const ISO_STREAM = {
-  url: "https://pi-desktop-iso-proxy-jdg88r-preview.freebuff.site/iso",
+  url: "https://pi-desktop-iso-proxy-jdg88r.freebuff.site/iso",
   size: 3607101440,
   // Eight megabytes a read keeps a whole boot to ~430 requests instead of thousands.
   chunkSize: 8 * 1024 * 1024,
@@ -76,13 +76,21 @@ export class PatchedISO extends File {
 }
 
 export class PiVM {
-  constructor() {
+  constructor(settings = {}) {
     this.emulator = null;
     this.phase = "idle"; // idle | booting | running | paused | error
     this.errorMessage = "";
     this.listeners = new Set();
     this.sourceLabel = "";
     this.patchApplied = false;
+    this.memoryMB = Math.min(2048, Math.max(256, Number(settings.memoryMB) || MEMORY_MB));
+    this.relayUrl = settings.relayUrl || RELAY_URL;
+  }
+
+  /** Hardware options take effect on the next boot; the guest cannot change RAM while it runs. */
+  setSettings(settings = {}) {
+    if (settings.memoryMB) this.memoryMB = Math.min(2048, Math.max(256, Number(settings.memoryMB)));
+    if (settings.relayUrl) this.relayUrl = settings.relayUrl;
   }
 
   on(fn) {
@@ -124,7 +132,7 @@ export class PiVM {
   }
 
   netDevice() {
-    return { type: "ne2k", relay_url: RELAY_URL };
+    return { type: "ne2k", relay_url: this.relayUrl };
   }
 
   /**
@@ -150,7 +158,7 @@ export class PiVM {
 
     const emulator = new window.V86({
       wasm_path: "vm/v86.wasm",
-      memory_size: MEMORY_MB * 1024 * 1024,
+      memory_size: this.memoryMB * 1024 * 1024,
       vga_memory_size: 8 * 1024 * 1024,
       bios: { url: "vm/seabios.bin" },
       vga_bios: { url: "vm/vgabios.bin" },

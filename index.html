@@ -15,13 +15,15 @@
       <span><b>Raspberry Pi Desktop</b><small>32-bit x86 · v86 emulator</small></span>
     </div>
     <div class="actions">
-      <span id="status" class="status">no image</span>
+      <span id="status" class="status">stopped</span>
+      <button id="start" class="btn primary">▶ Start</button>
       <label class="btn" for="iso">Choose ISO</label>
       <input id="iso" type="file" accept=".iso,.img,.bin" />
       <button id="restart" class="btn" disabled>⟲ Restart</button>
       <button id="pause" class="btn" disabled>⏸ Pause</button>
       <button id="paste" class="btn" disabled>📋 Paste</button>
       <button id="full" class="btn" disabled>⛶ Fullscreen</button>
+      <button id="settings-open" class="btn" title="Machine settings">⚙ Settings</button>
     </div>
   </header>
 
@@ -37,10 +39,11 @@
           <div class="berry" aria-hidden="true">🍓</div>
           <h1>Raspberry Pi Desktop</h1>
           <p class="sub">The Foundation's 32-bit x86 edition of the Pi's desktop, booting for real in this tab.</p>
-          <p class="note" id="bootmsg">Starting. The 3.4 GB image streams in 8 MB slices from the edge proxy — there is nothing to download.</p>
+          <button id="start-big" class="primary">▶ Start the machine</button>
+          <p class="note" id="bootmsg">Nothing starts until you press Start: each boot streams about 3.4 GB (≈430 range requests) from the shared image proxy.</p>
           <p class="claim">A cold boot prints kernel messages for a few minutes before the system is up.</p>
           <div id="fallback" hidden>
-            <p class="claim" id="note">If the stream does not start, boot a local copy of the 2022-07-01</p>
+            <p class="claim" id="note">If the stream does not start, boot a local copy of the 2022-07-01 ISO instead:</p>
             <label class="pick" for="iso">Choose an ISO file</label>
           </div>
         </div>
@@ -54,6 +57,50 @@
     <span class="grow"></span>
     <span class="credit">Raspberry Pi Desktop © Raspberry Pi Ltd · v86 emulator (BSD-2-Clause)</span>
   </footer>
+
+  <dialog id="settings">
+    <form id="settings-form" method="dialog">
+      <h2>Machine settings</h2>
+
+      <label class="field">
+        <span>Memory</span>
+        <select id="set-memory">
+          <option value="512">512 MB</option>
+          <option value="1024">1024 MB</option>
+          <option value="1536">1536 MB</option>
+          <option value="2048">2048 MB</option>
+        </select>
+      </label>
+
+      <label class="field">
+        <span>Read size</span>
+        <select id="set-chunk">
+          <option value="2">2 MB ≈ 1720 requests per boot</option>
+          <option value="4">4 MB ≈ 860 requests per boot</option>
+          <option value="8">8 MB ≈ 430 requests per boot</option>
+          <option value="16">16 MB ≈ 215 requests per boot</option>
+          <option value="32">32 MB ≈ 108 requests per boot</option>
+        </select>
+      </label>
+
+      <label class="field">
+        <span>Image URL</span>
+        <input id="set-image" type="url" spellcheck="false" />
+      </label>
+
+      <label class="field">
+        <span>Network relay</span>
+        <input id="set-relay" type="text" spellcheck="false" />
+      </label>
+
+      <p class="note" id="settings-note">Applies the next time the machine starts.</p>
+
+      <div class="row">
+        <button class="btn" value="cancel">Cancel</button>
+        <button class="btn primary" id="settings-save" value="save">Save</button>
+      </div>
+    </form>
+  </dialog>
 
   <script src="vm/libv86.js"></script>
   <script type="module" src="js/main.js"></script>

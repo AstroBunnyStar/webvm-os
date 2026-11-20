@@ -1,7 +1,31 @@
-// Raspberry Pi Desktop in a tab: pick the ISO, boot it, use the machine.
-import { PiVM, PI_IMAGE, ISO_STREAM } from "./vm.js";
+// Raspberry Pi Desktop in a tab: start the machine, use it, tune it.
+import { PiVM, PI_IMAGE, ISO_STREAM, RELAY_URL } from "./vm.js";
 
-const vm = new PiVM();
+const SETTINGS_KEY = "pidesk.settings.v1";
+const DEFAULTS = {
+  memoryMB: 1024,
+  chunkMB: 8,
+  imageUrl: ISO_STREAM.url,
+  relayUrl: RELAY_URL,
+};
+
+/** Nothing boots on page load, so a visit costs the image proxy nothing until Start is pressed. */
+function loadSettings() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(SETTINGS_KEY) || "{}");
+    return {
+      memoryMB: Number(raw.memoryMB) || DEFAULTS.memoryMB,
+      chunkMB: Number(raw.chunkMB) || DEFAULTS.chunkMB,
+      imageUrl: typeof raw.imageUrl === "string" && raw.imageUrl ? raw.imageUrl : DEFAULTS.imageUrl,
+      relayUrl: typeof raw.relayUrl === "string" && raw.relayUrl ? raw.relayUrl : DEFAULTS.relayUrl,
+    };
+  } catch {
+    return { ...DEFAULTS };
+  }
+}
+
+let settings = loadSettings();
+const vm = new PiVM({ memoryMB: settings.memoryMB, relayUrl: settings.relayUrl });
 const $ = (id) => document.getElementById(id);
 
 const screen = $("screen_container");
@@ -18,6 +42,9 @@ const restartBtn = $("restart");
 const pauseBtn = $("pause");
 const pasteBtn = $("paste");
 const fullBtn = $("full");
+const startBtn = $("start");
+const startBigBtn = $("start-big");
+const settingsDialog = $("settings");
 
 /* ---------- display fitting ---------- */
 
@@ -68,7 +95,7 @@ setInterval(refit, 2000); // the guest can switch video modes at any time
 /* ---------- status ---------- */
 
 const PHASE_TEXT = {
-  idle: "no image",
+  idle: "stopped",
   booting: "booting",
   running: "running",
   paused: "paused",
@@ -80,6 +107,7 @@ function render() {
   statusEl.textContent = PHASE_TEXT[phase] || phase;
   statusEl.className = `status ${phase === "running" ? "live" : phase === "booting" ? "busy" : phase === "error" ? "err" : ""}`;
   phaseEl.textContent = phase === "error" ? (vm.errorMessage || "error") : (PHASE_TEXT[phase] || phase);
+  startBtn.disabled = phase === "booting" || phase === "running" || phase === "paused";
   restartBtn.disabled = !vm.emulator;
   pauseBtn.disabled = phase !== "running" && phase !== "paused";
   pauseBtn.textContent = phase === "paused" ? "▶ Resume" : "⏸ Pause";
@@ -125,13 +153,13 @@ function showOverlayError(message) {
 /** Boot the image the site carries, streamed from the edge proxy: no download, no file picker. */
 async function startStreaming() {
   bootMsg.textContent = "Contacting the image proxy…";
-  detailEl.textContent = "streaming · Raspberry Pi Desktop 2022-07-01 i386";
+  detailEl.textContent = `${settings.memoryMB} MB · streaming · ${settings.chunkMB} MB reads`;
   render();
   try {
     await vm.boot(screen, {
-      url: ISO_STREAM.url,
+      url: settings.imageUrl,
       size: ISO_STREAM.size,
-      chunkSize: ISO_STREAM.chunkSize,
+      chunkSize: settings.chunkMB * 1024 * 1024,
     });
     bootMsg.textContent = "The image is streaming; the boot console appears in a moment.";
     overlay.classList.add("hidden");
@@ -195,6 +223,38 @@ document.addEventListener("drop", (event) => {
 
 /* ---------- controls ---------- */
 
+startBtn.addEventListener("click", () => startStreaming());
+startBigBtn.addEventListener("click", () => startStreaming());
+
+settingsDialog.addEventListener("close", () => {});
+$("settings-open").addEventListener("click", () => {
+  $("set-memory").value = String(settings.memoryMB);
+  $("set-chunk").value = String(settings.chunkMB);
+  $("set-image").value = settings.imageUrl;
+  $("set-relay").value = settings.relayUrl;
+  $("settings-note").textContent = vm.emulator
+    ? "Saved settings apply the next time the machine starts — press Restart."
+    : "Applies the next time the machine starts.";
+  settingsDialog.showModal();
+});
+
+$("settings-form").addEventListener("submit", (event) => {
+  if (event.submitter && event.submitter.value === "cancel") return;
+  settings = {
+    memoryMB: Number($("set-memory").value) || DEFAULTS.memoryMB,
+    chunkMB: Number($("set-chunk").value) || DEFAULTS.chunkMB,
+    imageUrl: $("set-image").value.trim() || DEFAULTS.imageUrl,
+    relayUrl: $("set-relay").value.trim() || DEFAULTS.relayUrl,
+  };
+  try {
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+  } catch {
+    /* private mode: settings just last for this visit */
+  }
+  vm.setSettings({ memoryMB: settings.memoryMB, relayUrl: settings.relayUrl });
+  detailEl.textContent = `${settings.memoryMB} MB · ${settings.chunkMB} MB reads`;
+});
+
 restartBtn.addEventListener("click", () => {
   vm.restart();
   nudgeBootMenu();
@@ -230,13 +290,12 @@ document.addEventListener("pointerlockchange", () => {
 
 /* ---------- go ---------- */
 
-window.pidesk = { vm, start, startStreaming };
+window.pidesk = { vm, start, startStreaming, settings: () => settings };
 
-if (ISO_STREAM && ISO_STREAM.url) {
-  startStreaming();
-} else {
-  detailEl.textContent = PI_IMAGE.label;
-  bootMsg.textContent = "Choose the ISO to start the machine.";
+// A visit boots nothing: the machine waits for Start, so the proxy's request budget is only spent on demand.
+detailEl.textContent = `${PI_IMAGE.label} · ${settings.memoryMB} MB · ${settings.chunkMB} MB reads`;
+if (!(ISO_STREAM && ISO_STREAM.url) && !settings.imageUrl) {
+  bootMsg.textContent = "No image source configured — choose an ISO to start the machine.";
   fallback.hidden = false;
 }
 render();

@@ -18,8 +18,21 @@ last i386 release; the October 2026 build is `amd64`-only and cannot run on this
 
 ## Using it
 
-Open the page. The machine starts on its own: there is no download button, no file picker, and nothing to
-install. A cold boot prints kernel messages for a few minutes before the system is up.
+Open the page and press **Start**. Nothing boots on page load — a visit costs the image proxy nothing, and
+only a start spends its request budget. There is no download button, no file picker, and nothing to install.
+A cold boot prints kernel messages for a few minutes before the system is up.
+
+### Settings
+
+The ⚙ **Settings** button sets how the machine is built:
+
+* **Memory** — 512 to 2048 MB for the guest.
+* **Read size** — how much of the image each range request fetches. 8 MB is about 430 requests per boot,
+  32 MB about 108; larger reads use more memory per request.
+* **Image URL** — the proxy that streams the ISO, or any URL that serves it with byte ranges and CORS.
+* **Network relay** — the WebSocket relay the guest's NE2000 card talks to.
+
+Settings are kept in `localStorage` and apply the next time the machine starts.
 
 If the edge proxy cannot be reached, the page offers a local file instead — pick the
 [2022-07-01-raspios-bullseye-i386.iso](https://downloads.raspberrypi.com/rpd_x86/images/rpd_x86-2022-07-04/2022-07-01-raspios-bullseye-i386.iso)
@@ -47,8 +60,8 @@ A 3.4 GB ISO cannot be loaded into a browser tab, so it never is. The page strea
 ### The edge proxy
 
 `edge/worker.js` is deployed as its own Worker (`edge/deploy.json` is the manifest, published through
-Freebuff Sites at `https://pi-desktop-iso-proxy-jdg88r-preview.freebuff.site/iso`). It stores nothing:
-`/iso` forwards to Raspberry Pi's server, adds CORS, and patches the boot sector.
+Freebuff Sites at `https://pi-desktop-iso-proxy-jdg88r.freebuff.site/iso` — the production environment).
+It stores nothing: `/iso` forwards to Raspberry Pi's server, adds CORS, and patches the boot sector.
 
 That hosting tier allows **10,000 requests a day**. One boot costs roughly 430 of them (3.4 GB ÷ 8 MiB),
 so the proxy carries about twenty cold boots a day before the environment is paused. Raise `chunkSize` in
