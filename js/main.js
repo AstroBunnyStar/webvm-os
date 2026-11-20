@@ -226,7 +226,6 @@ document.addEventListener("drop", (event) => {
 startBtn.addEventListener("click", () => startStreaming());
 startBigBtn.addEventListener("click", () => startStreaming());
 
-settingsDialog.addEventListener("close", () => {});
 $("settings-open").addEventListener("click", () => {
   $("set-memory").value = String(settings.memoryMB);
   $("set-chunk").value = String(settings.chunkMB);
@@ -289,8 +288,6 @@ document.addEventListener("pointerlockchange", () => {
 });
 
 /* ---------- go ---------- */
-
-window.pidesk = { vm, start, startStreaming, settings: () => settings };
 
 // A visit boots nothing: the machine waits for Start, so the proxy's request budget is only spent on demand.
 detailEl.textContent = `${PI_IMAGE.label} · ${settings.memoryMB} MB · ${settings.chunkMB} MB reads`;
