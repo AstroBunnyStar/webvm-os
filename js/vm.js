@@ -8,7 +8,7 @@ export const PI_IMAGE = {
   url: "https://downloads.raspberrypi.com/rpd_x86/images/rpd_x86-2022-07-04/2022-07-01-raspios-bullseye-i386.iso",
   page: "https://www.raspberrypi.com/software/raspberry-pi-desktop/",
   size: 3607101440, // bytes; the 2022-07-01 i386 live ISO
-  label: "3.4 GB · Debian 11 · 32-bit i386",
+  label: "3.4 GB · i386 live ISO",
 };
 
 export const RELAY_URL = "wss://relay.widgetry.org/";

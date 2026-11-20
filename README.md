@@ -12,9 +12,9 @@ Raspberry Pi OS **for the Pi** cannot run here. Every image the Foundation ships
 (`armhf` or `arm64`), and v86 emulates a 32-bit x86 PC; ARM instructions cannot execute on that CPU.
 
 [Raspberry Pi Desktop for PC](https://www.raspberrypi.com/software/raspberry-pi-desktop/) is the other
-product with that name: Debian 11 with the Pi desktop, built for 32-bit x86. That is what this page boots.
-Use the **2022-07-01 `i386`** live ISO (3.4 GB) — it is the last i386 release; the October 2026 build is
-`amd64`-only and cannot run on this CPU.
+product with that name: the same Pi desktop, built for 32-bit x86 machines. That is the one thing this
+project boots, and the only image it accepts. Use the **2022-07-01 `i386`** live ISO (3.4 GB) — it is the
+last i386 release; the October 2026 build is `amd64`-only and cannot run on this CPU.
 
 ## Using it
 
@@ -66,4 +66,4 @@ vm/vgabios.bin    VGA BIOS
 ## Credits
 
 * [v86](https://github.com/copy/v86) — x86 emulator and x86-to-Wasm JIT, BSD-2-Clause (see `vm/LICENSE-v86.txt`).
-* Raspberry Pi Desktop is © Raspberry Pi Ltd, distributed under the Debian licenses it is built from.
+* Raspberry Pi Desktop is © Raspberry Pi Ltd.
