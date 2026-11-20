@@ -14,6 +14,16 @@ export const PI_IMAGE = {
 export const RELAY_URL = "wss://relay.widgetry.org/";
 export const MEMORY_MB = 1024;
 
+// The image the page boots by itself. Raspberry Pi's own server sends no CORS headers, so a browser cannot
+// read it, and GitHub cannot carry 3.4 GB; this edge Worker (edge/worker.js in this repo) proxies the file
+// with byte ranges, CORS, and the boot-sector patch applied as it streams.
+export const ISO_STREAM = {
+  url: "https://pi-desktop-iso-proxy-jdg88r-preview.freebuff.site/iso",
+  size: 3607101440,
+  // Eight megabytes a read keeps a whole boot to ~430 requests instead of thousands.
+  chunkSize: 8 * 1024 * 1024,
+};
+
 // The ISO's syslinux config lives in one 2 KiB sector, and the live-boot line in it decides whether the
 // machine ever finishes starting: plymouth's splash never quits on this emulated VGA, so the boot hangs
 // behind it. Rewriting the parameters in place (same byte length, so the ISO9660 directory stays valid)
@@ -126,7 +136,12 @@ export class PiVM {
     if (!window.V86) throw new Error("v86 failed to load (vm/libv86.js)");
 
     const cdrom = source.url
-      ? { url: source.url, size: source.size, async: true, fixed_chunk_size: 512 * 1024 }
+      ? {
+          url: source.url,
+          size: source.size,
+          async: true,
+          fixed_chunk_size: source.chunkSize || ISO_STREAM.chunkSize,
+        }
       : await this.cdromFor(source.file);
 
     this.sourceLabel = source.file ? source.file.name : "Raspberry Pi Desktop";

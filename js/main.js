@@ -1,5 +1,5 @@
 // Raspberry Pi Desktop in a tab: pick the ISO, boot it, use the machine.
-import { PiVM, PI_IMAGE } from "./vm.js";
+import { PiVM, PI_IMAGE, ISO_STREAM } from "./vm.js";
 
 const vm = new PiVM();
 const $ = (id) => document.getElementById(id);
@@ -9,6 +9,8 @@ const wrap = document.querySelector(".screen-wrap");
 const overlay = $("overlay");
 const isoInput = $("iso");
 const note = $("note");
+const bootMsg = $("bootmsg");
+const fallback = $("fallback");
 const statusEl = $("status");
 const phaseEl = $("phase");
 const detailEl = $("detail");
@@ -87,6 +89,9 @@ function render() {
 
 vm.on((event) => {
   if (event.type === "screen") requestAnimationFrame(refit);
+  if (event.type === "phase" && vm.phase === "error") {
+    showOverlayError(vm.errorMessage || "The image could not be read.");
+  }
   render();
 });
 
@@ -108,16 +113,47 @@ function nudgeBootMenu() {
   );
 }
 
+/** Bring the boot card back with an explanation and the local-file escape hatch. */
+function showOverlayError(message) {
+  bootMsg.textContent = "The machine did not start.";
+  note.textContent = message;
+  note.classList.add("err");
+  fallback.hidden = false;
+  overlay.classList.remove("hidden");
+}
+
+/** Boot the image the site carries, streamed from the edge proxy: no download, no file picker. */
+async function startStreaming() {
+  bootMsg.textContent = "Contacting the image proxy…";
+  detailEl.textContent = "streaming · Raspberry Pi Desktop 2022-07-01 i386";
+  render();
+  try {
+    await vm.boot(screen, {
+      url: ISO_STREAM.url,
+      size: ISO_STREAM.size,
+      chunkSize: ISO_STREAM.chunkSize,
+    });
+    bootMsg.textContent = "The image is streaming; the boot console appears in a moment.";
+    overlay.classList.add("hidden");
+    nudgeBootMenu();
+  } catch (err) {
+    vm.phase = "error";
+    vm.errorMessage = (err && err.message) || String(err);
+    showOverlayError(vm.errorMessage);
+    render();
+  }
+}
+
 async function start(file) {
   if (!file) return;
   if (/amd64|x86[_-]?64/i.test(file.name)) {
     note.textContent = `${file.name} is a 64-bit image; this emulator is 32-bit x86. Use the 2022-07-01 i386 ISO.`;
     note.classList.add("err");
+    fallback.hidden = false;
     return;
   }
 
   note.classList.remove("err");
-  note.textContent = `Starting ${file.name}…`;
   detailEl.textContent = `${file.name} · ${Math.round(file.size / 1048576)} MB`;
   overlay.classList.add("hidden");
   render();
@@ -126,11 +162,9 @@ async function start(file) {
     await vm.boot(screen, { file });
     nudgeBootMenu();
   } catch (err) {
-    overlay.classList.remove("hidden");
-    note.classList.add("err");
-    note.textContent = (err && err.message) || String(err);
     vm.phase = "error";
-    vm.errorMessage = note.textContent;
+    vm.errorMessage = (err && err.message) || String(err);
+    showOverlayError(vm.errorMessage);
     render();
   }
 }
@@ -196,6 +230,13 @@ document.addEventListener("pointerlockchange", () => {
 
 /* ---------- go ---------- */
 
-detailEl.textContent = PI_IMAGE.label;
+window.pidesk = { vm, start, startStreaming };
+
+if (ISO_STREAM && ISO_STREAM.url) {
+  startStreaming();
+} else {
+  detailEl.textContent = PI_IMAGE.label;
+  bootMsg.textContent = "Choose the ISO to start the machine.";
+  fallback.hidden = false;
+}
 render();
-window.pidesk = { vm, start };

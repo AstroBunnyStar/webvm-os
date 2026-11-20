@@ -18,30 +18,42 @@ last i386 release; the October 2026 build is `amd64`-only and cannot run on this
 
 ## Using it
 
-1. Get the ISO: [2022-07-01-raspios-bullseye-i386.iso](https://downloads.raspberrypi.com/rpd_x86/images/rpd_x86-2022-07-04/2022-07-01-raspios-bullseye-i386.iso)
-   (3,607,101,440 bytes, sha256 `5fa906df25e600bf7d7e6a5eb7b0e9b6605e60992ee6c8efe79bc99e7c2452bd`).
-2. Choose that file on the page, or drop it anywhere on it.
-3. Wait. A cold boot prints kernel messages for a few minutes before the system is up.
+Open the page. The machine starts on its own: there is no download button, no file picker, and nothing to
+install. A cold boot prints kernel messages for a few minutes before the system is up.
 
-Nothing is uploaded and nothing is cached: the file stays on your disk.
-
-The 3.4 GB image is not stored in this repository, and cannot be: GitHub rejects blobs over 100 MB and
-caps a published Pages site at 1 GB. The page links Raspberry Pi's own download server instead and shows
-the checksum, so the ISO is one click from the site but still served by the people who build it.
+If the edge proxy cannot be reached, the page offers a local file instead — pick the
+[2022-07-01-raspios-bullseye-i386.iso](https://downloads.raspberrypi.com/rpd_x86/images/rpd_x86-2022-07-04/2022-07-01-raspios-bullseye-i386.iso)
+(3,607,101,440 bytes, sha256 `5fa906df25e600bf7d7e6a5eb7b0e9b6605e60992ee6c8efe79bc99e7c2452bd`) and it boots from disk instead.
 
 ## How the image gets in
 
-A 3.4 GB ISO cannot be loaded into a browser tab, so it never is:
+A 3.4 GB ISO cannot be loaded into a browser tab, so it never is. The page streams it:
 
-* v86 is handed the `File` itself. It reads 512 KiB slices on demand through `File.slice()`, so only the
-  blocks the guest actually asks for are ever read, and RAM stays at the 1 GB given to the guest.
-* The ISO's own syslinux entry is rewritten in the stream (`js/vm.js`, sector 110737) before the guest
-  sees it. Its `quiet splash plymouth.ignore-serial-consoles persistence` becomes
-  `console=tty1 xforcevesa nomodeset`: plymouth's splash never quits on this emulated VGA, and the boot
-  hangs behind it, so the parameters are replaced in place (same byte length) and the kernel log is left
-  on the console instead. If the sector does not match — a different ISO — the file is booted untouched.
-* The ISO's boot menu waits for a keypress (`timeout 0`), so the page presses Enter for you a few seconds
-  in, and again on every restart.
+* **The file is never stored here.** GitHub rejects blobs over 100 MB and caps a published Pages site at
+  1 GB, so the image stays on Raspberry Pi's download server and is read through a small range proxy
+  (`edge/worker.js`, deployed separately — see below). The Worker adds the CORS headers a browser needs
+  (Raspberry Pi's server sends none, so the file cannot be read cross-origin directly) and answers each
+  `Range` request with the matching bytes.
+* **v86 reads 8 MiB chunks on demand** over those range requests, so RAM stays at the 1 GB given to the
+  guest and only the blocks the guest asks for are ever transferred.
+* **The boot sector is rewritten on the way through.** The ISO's syslinux entry has
+  `quiet splash plymouth.ignore-serial-consoles persistence`; plymouth's splash never quits on this
+  emulated VGA and the boot hangs behind it forever. The proxy replaces those parameters with
+  `console=tty1 xforcevesa nomodeset` in the same 2 KiB sector (identical byte length, so the ISO9660
+  directory stays valid). Booting from a local file does the same thing in the page (`js/vm.js`).
+* **The ISO's boot menu waits for a keypress** (`timeout 0`), so the page presses Enter for you a few
+  seconds in, and again on every restart.
+
+### The edge proxy
+
+`edge/worker.js` is deployed as its own Worker (`edge/deploy.json` is the manifest, published through
+Freebuff Sites at `https://pi-desktop-iso-proxy-jdg88r-preview.freebuff.site/iso`). It stores nothing:
+`/iso` forwards to Raspberry Pi's server, adds CORS, and patches the boot sector.
+
+That hosting tier allows **10,000 requests a day**. One boot costs roughly 430 of them (3.4 GB ÷ 8 MiB),
+so the proxy carries about twenty cold boots a day before the environment is paused. Raise `chunkSize` in
+`js/vm.js` to trade memory for fewer requests; point `ISO_STREAM.url` somewhere else if you host the
+proxy yourself.
 
 Networking uses v86's NE2000 card and the public WebSocket relay (`wss://relay.widgetry.org/`), which is
 what gives the guest a DHCP lease and real TCP.
@@ -53,13 +65,16 @@ what gives the guest a DHCP lease and real TCP.
 * The graphical session is the weak point: on v86's plain VGA the guest can end up at a text login
   instead of lightdm/LXDE. The boot parameters above force the VESA driver, which is the best path this
   emulator offers, but a full desktop is not guaranteed.
+* Streaming needs the edge proxy to be up. Without it the page falls back to a local ISO file.
 * The live session has no writable disk: changes inside the guest are lost when it restarts.
 
 ## Layout
 
 ```
-index.html        the page: toolbar, screen, file picker
+index.html        the page: toolbar, screen, boot card
 css/style.css     styles for the single machine window
+edge/worker.js    range proxy: CORS, byte ranges, boot-sector patch
+edge/deploy.json  manifest for deploying that Worker
 js/main.js        wiring: boot, fit, fullscreen, paste, restart
 js/vm.js          v86 controller, ISO slicing and boot-sector patch
 vm/libv86.js      v86 runtime (BSD-2-Clause)
