@@ -2,14 +2,8 @@
 import { PiVM, PI_IMAGE, ISO_STREAM, RELAY_URL } from "./vm.js";
 
 const SETTINGS_KEY = "pidesk.settings.v1";
-const DEFAULTS = {
-  memoryMB: 1024,
-  chunkMB: 8,
-  imageUrl: ISO_STREAM.url,
-  relayUrl: RELAY_URL,
-};
+const DEFAULTS = { memoryMB: 1024, chunkMB: 8, imageUrl: ISO_STREAM.url, relayUrl: RELAY_URL };
 
-/** Nothing boots on page load, so a visit costs the image proxy nothing until Start is pressed. */
 function loadSettings() {
   try {
     const raw = JSON.parse(localStorage.getItem(SETTINGS_KEY) || "{}");
@@ -27,7 +21,6 @@ function loadSettings() {
 let settings = loadSettings();
 const vm = new PiVM({ memoryMB: settings.memoryMB, relayUrl: settings.relayUrl });
 const $ = (id) => document.getElementById(id);
-
 const screen = $("screen_container");
 const wrap = document.querySelector(".screen-wrap");
 const overlay = $("overlay");
@@ -43,23 +36,18 @@ const pauseBtn = $("pause");
 const pasteBtn = $("paste");
 const fullBtn = $("full");
 const startBtn = $("start");
-const startBigBtn = $("start-big");
-const settingsDialog = $("settings");
-
-/* ---------- display fitting ---------- */
+let booting = false;
+let sourceMode = "stream";
+let selectedFile = null;
+let nudges = [];
 
 function fitBox() {
   const full = document.fullscreenElement === screen;
   const el = full ? screen : wrap;
   const pad = full ? 0 : 16;
-  return {
-    full,
-    w: Math.max(240, el.clientWidth - pad),
-    h: Math.max(160, el.clientHeight - pad),
-  };
+  return { full, w: Math.max(240, el.clientWidth - pad), h: Math.max(160, el.clientHeight - pad) };
 }
 
-/** Size the guest from its own framebuffer, so windowed use stays pixel-exact and fullscreen fills. */
 function fitCanvas() {
   const canvas = screen.querySelector("canvas");
   if (!canvas || !canvas.width || canvas.width < 320) return;
@@ -70,7 +58,6 @@ function fitCanvas() {
   canvas.style.height = `${Math.round(canvas.height * factor)}px`;
 }
 
-/** v86 renders text mode into a monospaced div; shrink the font until the 80-column console fits. */
 function fitText() {
   const text = screen.querySelector(".vm-text");
   if (!text || getComputedStyle(text).display === "none") return;
@@ -81,8 +68,7 @@ function fitText() {
   const h = text.scrollHeight || text.offsetHeight;
   if (!w || !h) return;
   const box = fitBox();
-  const k = Math.min(1, box.w / w, box.h / h);
-  const px = Math.max(6, Math.floor(base * k));
+  const px = Math.max(6, Math.floor(base * Math.min(1, box.w / w, box.h / h)));
   text.style.fontSize = `${px}px`;
   text.style.lineHeight = `${px}px`;
 }
@@ -90,25 +76,16 @@ function fitText() {
 const refit = () => { fitCanvas(); fitText(); };
 window.addEventListener("resize", refit);
 document.addEventListener("fullscreenchange", refit);
-setInterval(refit, 2000); // the guest can switch video modes at any time
+setInterval(refit, 2000);
 
-/* ---------- status ---------- */
-
-const PHASE_TEXT = {
-  idle: "stopped",
-  booting: "booting",
-  running: "running",
-  paused: "paused",
-  error: "error",
-};
-
+const PHASE_TEXT = { idle: "stopped", booting: "booting", running: "running", paused: "paused", error: "error" };
 function render() {
   const phase = vm.phase;
   statusEl.textContent = PHASE_TEXT[phase] || phase;
   statusEl.className = `status ${phase === "running" ? "live" : phase === "booting" ? "busy" : phase === "error" ? "err" : ""}`;
   phaseEl.textContent = phase === "error" ? (vm.errorMessage || "error") : (PHASE_TEXT[phase] || phase);
-  startBtn.disabled = phase === "booting" || phase === "running" || phase === "paused";
-  restartBtn.disabled = !vm.emulator;
+  startBtn.disabled = booting || phase === "booting" || phase === "running" || phase === "paused";
+  restartBtn.disabled = booting || (!vm.emulator && !selectedFile);
   pauseBtn.disabled = phase !== "running" && phase !== "paused";
   pauseBtn.textContent = phase === "paused" ? "▶ Resume" : "⏸ Pause";
   pasteBtn.disabled = phase !== "running";
@@ -117,31 +94,24 @@ function render() {
 
 vm.on((event) => {
   if (event.type === "screen") requestAnimationFrame(refit);
-  if (event.type === "phase" && vm.phase === "error") {
-    showOverlayError(vm.errorMessage || "The image could not be read.");
-  }
+  if (event.type === "phase" && vm.phase === "error") showOverlayError(vm.errorMessage || "The image could not be read.");
   render();
 });
 
-/* ---------- booting ---------- */
-
-let nudges = [];
-
-/**
- * The ISO's syslinux menu is configured with `timeout 0`, so it waits for a keypress for ever. Press
- * Enter once the menu is up, and keep pressing: the menu only appears after the kernel and initrd have
- * been read, which takes longer on a slow disk.
- */
-function nudgeBootMenu() {
+function clearNudges() {
   nudges.forEach(clearTimeout);
-  nudges = [20000, 30000, 40000, 50000, 60000, 70000, 80000, 90000, 100000].map((delay) =>
-    setTimeout(() => {
-      if (vm.phase === "running" || vm.phase === "booting") vm.pressEnter();
-    }, delay),
-  );
+  nudges = [];
 }
 
-/** Bring the boot card back with an explanation and the local-file escape hatch. */
+function nudgeBootMenu() {
+  clearNudges();
+  const delays = [20000, 30000, 40000, 50000, 60000, 70000, 80000, 90000, 100000];
+  nudges = delays.map((delay, index) => setTimeout(() => {
+    if (vm.phase === "running" || vm.phase === "booting") vm.pressEnter();
+    if (index === delays.length - 1) clearNudges();
+  }, delay));
+}
+
 function showOverlayError(message) {
   bootMsg.textContent = "The machine did not start.";
   note.textContent = message;
@@ -150,26 +120,32 @@ function showOverlayError(message) {
   overlay.classList.remove("hidden");
 }
 
-/** Boot the image the site carries, streamed from the edge proxy: no download, no file picker. */
-async function startStreaming() {
-  bootMsg.textContent = "Contacting the image proxy…";
-  detailEl.textContent = `${settings.memoryMB} MB · streaming · ${settings.chunkMB} MB reads`;
+async function runBoot(source) {
+  if (booting) return;
+  booting = true;
+  clearNudges();
   render();
   try {
-    await vm.boot(screen, {
-      url: settings.imageUrl,
-      size: ISO_STREAM.size,
-      chunkSize: settings.chunkMB * 1024 * 1024,
-    });
-    bootMsg.textContent = "The image is streaming; the boot console appears in a moment.";
+    await vm.boot(screen, source);
     overlay.classList.add("hidden");
+    bootMsg.textContent = "The image is streaming; the boot console appears in a moment.";
     nudgeBootMenu();
-  } catch (err) {
+  } catch (error) {
     vm.phase = "error";
-    vm.errorMessage = (err && err.message) || String(err);
+    vm.errorMessage = error?.message || String(error);
     showOverlayError(vm.errorMessage);
+  } finally {
+    booting = false;
     render();
   }
+}
+
+async function startStreaming() {
+  sourceMode = "stream";
+  selectedFile = null;
+  bootMsg.textContent = "Contacting the image proxy…";
+  detailEl.textContent = `${settings.memoryMB} MB · streaming · ${settings.chunkMB} MB reads`;
+  await runBoot({ url: settings.imageUrl, size: ISO_STREAM.size, chunkSize: settings.chunkMB * 1024 * 1024 });
 }
 
 async function start(file) {
@@ -180,51 +156,40 @@ async function start(file) {
     fallback.hidden = false;
     return;
   }
-
+  sourceMode = "file";
+  selectedFile = file;
   note.classList.remove("err");
   detailEl.textContent = `${file.name} · ${Math.round(file.size / 1048576)} MB`;
-  overlay.classList.add("hidden");
-  render();
-
-  try {
-    await vm.boot(screen, { file });
-    nudgeBootMenu();
-  } catch (err) {
-    vm.phase = "error";
-    vm.errorMessage = (err && err.message) || String(err);
-    showOverlayError(vm.errorMessage);
-    render();
-  }
+  await runBoot({ file });
 }
 
 isoInput.addEventListener("change", () => {
-  const file = isoInput.files && isoInput.files[0];
+  const file = isoInput.files?.[0];
   if (file) start(file);
 });
 
-// Dropping the ISO anywhere on the page starts it, so the picker is not the only way in.
-["dragenter", "dragover"].forEach((type) =>
-  document.addEventListener(type, (event) => {
-    event.preventDefault();
-    document.body.classList.add("dropping");
-  }),
-);
-["dragleave", "dragend"].forEach((type) =>
-  document.addEventListener(type, (event) => {
-    if (event.relatedTarget === null) document.body.classList.remove("dropping");
-  }),
-);
+let dragDepth = 0;
+document.addEventListener("dragenter", (event) => {
+  event.preventDefault();
+  dragDepth++;
+  document.body.classList.add("dropping");
+});
+document.addEventListener("dragover", (event) => event.preventDefault());
+document.addEventListener("dragleave", (event) => {
+  event.preventDefault();
+  dragDepth = Math.max(0, dragDepth - 1);
+  if (dragDepth === 0) document.body.classList.remove("dropping");
+});
 document.addEventListener("drop", (event) => {
   event.preventDefault();
+  dragDepth = 0;
   document.body.classList.remove("dropping");
-  const file = event.dataTransfer && event.dataTransfer.files && event.dataTransfer.files[0];
+  const file = event.dataTransfer?.files?.[0];
   if (file) start(file);
 });
 
-/* ---------- controls ---------- */
-
-startBtn.addEventListener("click", () => startStreaming());
-startBigBtn.addEventListener("click", () => startStreaming());
+startBtn.addEventListener("click", startStreaming);
+$("start-big").addEventListener("click", startStreaming);
 
 $("settings-open").addEventListener("click", () => {
   $("set-memory").value = String(settings.memoryMB);
@@ -232,31 +197,27 @@ $("settings-open").addEventListener("click", () => {
   $("set-image").value = settings.imageUrl;
   $("set-relay").value = settings.relayUrl;
   $("settings-note").textContent = vm.emulator
-    ? "Saved settings apply the next time the machine starts — press Restart."
+    ? "Saved settings apply when the machine is started again. Use Restart to apply them now."
     : "Applies the next time the machine starts.";
-  settingsDialog.showModal();
+  $("settings").showModal();
 });
 
 $("settings-form").addEventListener("submit", (event) => {
-  if (event.submitter && event.submitter.value === "cancel") return;
+  if (event.submitter?.value === "cancel") return;
   settings = {
     memoryMB: Number($("set-memory").value) || DEFAULTS.memoryMB,
     chunkMB: Number($("set-chunk").value) || DEFAULTS.chunkMB,
     imageUrl: $("set-image").value.trim() || DEFAULTS.imageUrl,
     relayUrl: $("set-relay").value.trim() || DEFAULTS.relayUrl,
   };
-  try {
-    localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
-  } catch {
-    /* private mode: settings just last for this visit */
-  }
+  try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch { /* private mode: visit-only settings */ }
   vm.setSettings({ memoryMB: settings.memoryMB, relayUrl: settings.relayUrl });
   detailEl.textContent = `${settings.memoryMB} MB · ${settings.chunkMB} MB reads`;
 });
 
 restartBtn.addEventListener("click", () => {
-  vm.restart();
-  nudgeBootMenu();
+  if (sourceMode === "file" && selectedFile) start(selectedFile);
+  else startStreaming();
 });
 
 pauseBtn.addEventListener("click", () => {
@@ -267,8 +228,7 @@ pauseBtn.addEventListener("click", () => {
 pasteBtn.addEventListener("click", async () => {
   try {
     const text = await navigator.clipboard.readText();
-    if (!text) return;
-    vm.type(text);
+    if (text) vm.type(text);
   } catch {
     note.textContent = "The browser blocked clipboard access.";
   }
@@ -284,12 +244,11 @@ screen.addEventListener("pointerdown", (event) => {
 });
 
 document.addEventListener("pointerlockchange", () => {
-  if (document.pointerLockElement) detailEl.textContent = "mouse captured — Esc releases it";
+  detailEl.textContent = document.pointerLockElement
+    ? "mouse captured — Esc releases it"
+    : `${PI_IMAGE.label} · ${settings.memoryMB} MB · ${settings.chunkMB} MB reads`;
 });
 
-/* ---------- go ---------- */
-
-// A visit boots nothing: the machine waits for Start, so the proxy's request budget is only spent on demand.
 detailEl.textContent = `${PI_IMAGE.label} · ${settings.memoryMB} MB · ${settings.chunkMB} MB reads`;
 if (!(ISO_STREAM && ISO_STREAM.url) && !settings.imageUrl) {
   bootMsg.textContent = "No image source configured — choose an ISO to start the machine.";
