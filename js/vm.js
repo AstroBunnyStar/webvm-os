@@ -1,107 +1,78 @@
-// Controller around the v86 x86 emulator: boot, input, screenshots, 9p transfers, snapshots.
-import { imageName } from "./images.js";
-import { readSnapshot, writeSnapshot, deleteSnapshot } from "./state.js";
+// The single machine this site runs: Raspberry Pi Desktop for PC (32-bit x86) under v86.
+//
+// The ISO is never held in memory. It is read in slices straight from the File the user picked (or, for
+// development, from a URL with HTTP range requests), which is what lets a 3.4 GB image boot in a tab.
 
-const STORE_KEY = "webvm.settings.v1";
-const MOUNT_TAG = "hostshare";
+export const PI_IMAGE = {
+  name: "Raspberry Pi Desktop for PC",
+  url: "https://downloads.raspberrypi.com/rpd_x86/images/rpd_x86-2022-07-04/2022-07-01-raspios-bullseye-i386.iso",
+  page: "https://www.raspberrypi.com/software/raspberry-pi-desktop/",
+  size: 3607101440, // bytes; the 2022-07-01 i386 live ISO
+  label: "3.4 GB · Debian 11 · 32-bit i386",
+};
 
-// A snapshot is the guest's whole RAM (about 150 MB here), so autosave is a coarse safety net:
-// every five minutes, and on unload only if the last one is a couple of minutes old. 💾 Save in the
-// Machine window is the precise, immediate option.
-const AUTOSAVE_MS = 5 * 60_000;
-const LEAVE_SAVE_MIN_MS = 2 * 60_000;
-// Every v86 state blob starts with this magic number; anything else cannot be restored.
-const V86_STATE_MAGIC = -2039052682;
+export const RELAY_URL = "wss://relay.widgetry.org/";
+export const MEMORY_MB = 1024;
 
-/** A locally administered unicast MAC address (02:xx:xx:xx:xx:xx). */
-function randomMac() {
-  const hex = () => Math.floor(Math.random() * 256).toString(16).padStart(2, "0");
-  return ["02", hex(), hex(), hex(), hex(), hex()].join(":");
+// The ISO's syslinux config lives in one 2 KiB sector, and the live-boot line in it decides whether the
+// machine ever finishes starting: plymouth's splash never quits on this emulated VGA, so the boot hangs
+// behind it. Rewriting the parameters in place (same byte length, so the ISO9660 directory stays valid)
+// drops the splash, forces X onto the plain VESA driver and keeps the kernel log on the console.
+const PATCH_SECTOR = 110737;
+const PATCH_OFFSET = PATCH_SECTOR * 2048;
+const PATCH_FROM = "quiet splash plymouth.ignore-serial-consoles persistence";
+const PATCH_TO = "console=tty1 xforcevesa nomodeset";
+
+/** The 2 KiB boot-config sector, patched, or null when this ISO does not look like the one we know. */
+export async function readPatchedBootSector(file) {
+  const blob = file.slice(PATCH_OFFSET, PATCH_OFFSET + 2048);
+  const bytes = new Uint8Array(await blob.arrayBuffer());
+  const text = new TextDecoder("latin1").decode(bytes);
+  if (!text.includes(PATCH_FROM)) return null;
+  const patched = text.split(PATCH_FROM).join(PATCH_TO.padEnd(PATCH_FROM.length, " "));
+  return new TextEncoder().encode(patched);
 }
 
 /**
- * Typed into the guest after the host has reopened the relay socket. The relay refuses a lease to a
- * MAC it already has one for, so the card takes a fresh one; then it asks again every few seconds
- * until a lease arrives and a real HTTP fetch works. The verdict goes out on the guest's serial
- * port, which the host reads back — no screen scraping, and nothing installed in the guest.
+ * A File that serves the patched sector for reads that touch it and the untouched image everywhere else.
+ * v86 only ever asks for slices, so the 3.4 GB original is still read lazily from disk.
  */
-export function reconnectCommand() {
-  return (
-    `ip link set eth0 down; ip link set eth0 address ${randomMac()}; ip link set eth0 up; ` +
-    "ok=0; for i in 1 2 3 4 5 6; do " +
-    "udhcpc -i eth0 -n -t 3 && wget -T 6 -q -O /dev/null http://example.com && ok=1 && break; " +
-    "sleep 8; done; " +
-    "[ $ok = 1 ] && echo NET-OK > /dev/ttyS0 || echo NET-FAIL > /dev/ttyS0"
-  );
-}
+export class PatchedISO extends File {
+  constructor(original, sectorBytes) {
+    super([], original.name, { type: original.type, lastModified: original.lastModified });
+    this.original = original;
+    this.sectorBytes = sectorBytes;
+    this.sectorStart = PATCH_OFFSET;
+    this.sectorEnd = PATCH_OFFSET + sectorBytes.length;
+  }
 
-/** Guest command that brings eth0 up and points apk at the online Alpine mirrors. */
-export const NETWORK_SETUP_CMD =
-  "ip link set eth0 up; udhcpc -i eth0 -n; " +
-  "grep -q dl-cdn /etc/apk/repositories || echo https://dl-cdn.alpinelinux.org/alpine/v3.21/main >> /etc/apk/repositories; " +
-  "grep -q community /etc/apk/repositories || echo https://dl-cdn.alpinelinux.org/alpine/v3.21/community >> /etc/apk/repositories; apk update";
+  get size() {
+    return this.original.size;
+  }
 
-
-export const DEFAULT_SETTINGS = {
-  memoryMB: 512,
-  nic: "ne2k",
-  backend: "wsproxy",
-  relayUrl: "wss://relay.widgetry.org/",
-  wispUrl: "wisp://localhost:12345",
-  imageUrl: "media/alpine-virt-x86.iso",
-  imageName: "Alpine Linux 3.21 (virt, x86)",
-  scale: 1,
-  wallpaper: "aubergine",
-  welcomeSeen: false,
-};
-
-export function loadSettings() {
-  try {
-    const raw = JSON.parse(localStorage.getItem(STORE_KEY) || "{}");
-    return { ...DEFAULT_SETTINGS, ...raw };
-  } catch {
-    return { ...DEFAULT_SETTINGS };
+  slice(start = 0, end = this.size, type) {
+    if (end <= this.sectorStart || start >= this.sectorEnd) {
+      return this.original.slice(start, end, type);
+    }
+    // Reads that straddle the sector are reassembled from three parts; no byte is ever read eagerly.
+    const parts = [];
+    if (start < this.sectorStart) parts.push(this.original.slice(start, Math.min(end, this.sectorStart)));
+    const from = Math.max(start, this.sectorStart) - this.sectorStart;
+    const to = Math.min(end, this.sectorEnd) - this.sectorStart;
+    parts.push(this.sectorBytes.subarray(from, Math.max(from, to)));
+    if (end > this.sectorEnd) parts.push(this.original.slice(Math.max(start, this.sectorEnd), end));
+    return new Blob(parts, type ? { type } : undefined);
   }
 }
 
-export function saveSettings(settings) {
-  try {
-    const { imageBuffer, ...persistable } = settings;
-    localStorage.setItem(STORE_KEY, JSON.stringify(persistable));
-  } catch { /* storage may be unavailable in private mode */ }
-}
-
-const NET_LABEL = {
-  wsproxy: "relay",
-  wisp: "wisp",
-  fetch: "http",
-  none: "offline",
-};
-export const netLabel = (backend) => NET_LABEL[backend] || backend;
-
-export class LinuxVM {
-  constructor(settings) {
-    this.settings = settings;
+export class PiVM {
+  constructor() {
     this.emulator = null;
-    this.phase = "idle";
-    this.progress = 0;
-    this.progressLabel = "";
-    this.imageBuffer = null;
+    this.phase = "idle"; // idle | booting | running | paused | error
+    this.errorMessage = "";
     this.listeners = new Set();
-    this.mountedPath = null;
-    this.saving = false;
-    this.snapshot = null; // { savedAt, bytes } of the snapshot on disk, for the status bar
-    this.restoring = false;
-    this.restoredFrom = 0;
-    this.networkStale = false;
-    this.reconnecting = false;
-    this.reconnectTimer = 0;
-    this.serialBuffer = "";
-    this.autosaveTimer = 0;
-
-    // Only a real unload writes on the way out. Hiding the tab does not: switching tabs all day
-    // must not snapshot the machine.
-    window.addEventListener("pagehide", () => this.saveOnExit());
+    this.sourceLabel = "";
+    this.patchApplied = false;
   }
 
   on(fn) {
@@ -119,139 +90,75 @@ export class LinuxVM {
     return !!this.emulator && this.phase === "running";
   }
 
-  netDevice() {
-    const s = this.settings;
-    const device = { type: s.nic || "ne2k" };
-    if (s.backend === "none") return device;
-    if (s.backend === "fetch") { device.relay_url = "fetch"; return device; }
-    if (s.backend === "wisp") { device.relay_url = s.wispUrl || "wisp://localhost:12345"; return device; }
-    device.relay_url = s.relayUrl || DEFAULT_SETTINGS.relayUrl;
-    return device;
-  }
-
-  /**
-   * True when the guest's address comes from a relay or WISP server rather than this tab. Mirrors
-   * netDevice(): browser-fetch answers requests itself and offline has no network at all.
-   */
-  usesServerLease() {
-    return this.settings.backend !== "none" && this.settings.backend !== "fetch";
-  }
-
   async destroy() {
-    this.stopAutosave();
-    if (this.emulator) {
-      const emu = this.emulator;
-      this.emulator = null;
-      this.phase = "idle";
-      try { await emu.destroy(); } catch { /* already torn down */ }
+    const emu = this.emulator;
+    this.emulator = null;
+    this.phase = "idle";
+    if (emu) {
+      try { await emu.destroy(); } catch { /* already gone */ }
     }
   }
 
-  /** True when a stored snapshot came from this exact machine configuration. */
-  snapshotMatches(record, memoryMB) {
-    const s = this.settings;
-    if (!record || !record.blob) return false;
-    const buffer = record.blob instanceof ArrayBuffer ? record.blob : record.blob.buffer;
-    if (!buffer || buffer.byteLength < 4096) return false;
+  /** Build v86's CD option for a picked file, applying the boot-sector patch when it is our ISO. */
+  async cdromFor(file) {
+    if (!file) throw new Error("Choose the Raspberry Pi Desktop ISO first.");
+    this.patchApplied = false;
     try {
-      // A truncated or foreign buffer would wedge restore_state, and v86 reports nothing for it.
-      if (new Int32Array(buffer, 0, 2)[0] !== V86_STATE_MAGIC) return false;
-    } catch { return false; }
-    return record.imageUrl === s.imageUrl &&
-      record.memoryMB === memoryMB &&
-      (record.nic || "ne2k") === (s.nic || "ne2k") &&
-      (record.backend || "wsproxy") === (s.backend || "wsproxy");
+      const sector = await readPatchedBootSector(file);
+      if (sector) {
+        this.patchApplied = true;
+        return { buffer: new PatchedISO(file, sector) };
+      }
+    } catch { /* fall through: boot the file untouched */ }
+    return { buffer: file };
+  }
+
+  netDevice() {
+    return { type: "ne2k", relay_url: RELAY_URL };
   }
 
   /**
-   * Start (or restart) the machine. With `resume`, a snapshot of the same guest is restored
-   * instead of cold-booting, so a page reload continues where the guest was.
+   * Start the machine in `screenContainer`. `source` is either { file } (the normal path) or
+   * { url, size } for a range-served image; both are read lazily by v86.
    */
-  async boot(screenContainer, { resume = true } = {}) {
+  async boot(screenContainer, source) {
     await this.destroy();
-    if (!window.V86) throw new Error("v86 runtime failed to load (vm/libv86.js)");
+    if (!window.V86) throw new Error("v86 failed to load (vm/libv86.js)");
 
-    const s = this.settings;
-    const memoryMB = Math.max(256, s.memoryMB || 512);
+    const cdrom = source.url
+      ? { url: source.url, size: source.size, async: true, fixed_chunk_size: 512 * 1024 }
+      : await this.cdromFor(source.file);
 
-    let snapshot = null;
-    if (resume) {
-      snapshot = await readSnapshot().catch(() => null);
-      if (snapshot && !this.snapshotMatches(snapshot, memoryMB)) snapshot = null;
-    }
-    // A snapshot we cannot use, or one the caller skipped, is stale: drop it rather than
-    // restore an older machine over this one on the next reload.
-    if (!snapshot) await deleteSnapshot().catch(() => undefined);
-    this.restoring = !!snapshot;
-    this.restoredFrom = snapshot ? snapshot.savedAt : 0;
-    this.snapshot = snapshot ? { savedAt: snapshot.savedAt, bytes: snapshot.blob.byteLength } : null;
-    // A relay/WISP lease belongs to the old connection, so a restored guest may come back holding
-    // an address nothing routes. Pressing Network cannot confirm it worked, so the flag lasts until
-    // a cold boot rather than turning into a claim that the guest is online.
-    this.networkStale = !!snapshot && this.usesServerLease();
-
-    this.phase = "loading";
-    this.progress = 0;
-    this.progressLabel = snapshot ? "Restoring your saved session…" : "Downloading Linux image…";
+    this.sourceLabel = source.file ? source.file.name : "Raspberry Pi Desktop";
+    this.phase = "booting";
     this.emit({ type: "phase" });
 
-    const options = {
+    const emulator = new window.V86({
       wasm_path: "vm/v86.wasm",
-      memory_size: memoryMB * 1024 * 1024,
+      memory_size: MEMORY_MB * 1024 * 1024,
       vga_memory_size: 8 * 1024 * 1024,
       bios: { url: "vm/seabios.bin" },
       vga_bios: { url: "vm/vgabios.bin" },
-      cdrom: this.imageBuffer ? { buffer: this.imageBuffer } : { url: s.imageUrl || DEFAULT_SETTINGS.imageUrl },
-      boot_order: 0x213, // CD, then hard disk, then floppy
+      cdrom,
+      boot_order: 0x213, // CD first
       autostart: true,
       disable_speaker: true,
       uart1: true,
       screen: { container: screenContainer, scaling: 1 },
-      filesystem: {}, // virtio-9p share used to hand host files to the guest
       net_device: this.netDevice(),
-      // v86 loads RAM and device state from the snapshot instead of booting the CD.
-      // It takes the state as { buffer }, not a bare ArrayBuffer (a bare one is fetched as a URL).
-      initial_state: snapshot ? { buffer: snapshot.blob } : undefined,
-    };
-
-    const emulator = new window.V86(options);
+    });
     this.emulator = emulator;
 
-    emulator.add_listener("download-progress", (e) => {
-      if (!e || !e.total) return;
-      this.progress = Math.max(1, Math.round((e.loaded / e.total) * 100));
-      this.progressLabel = `Downloading ${e.file_name || "Linux image"} — ${this.progress}%`;
-      this.emit({ type: "progress" });
-    });
-    emulator.add_listener("download-error", (e) => {
-      this.phase = "error";
-      this.emit({ type: "error", message: `Could not load ${e && e.file_name ? e.file_name : "a boot image"}. Check that the file exists and is served from the same origin.` });
-    });
-    emulator.add_listener("emulator-ready", () => {
-      this.progress = 100;
-      this.phase = "booting";
-      this.progressLabel = "Starting the kernel…";
-      this.emit({ type: "phase" });
-    });
     emulator.add_listener("emulator-started", () => {
       this.phase = "running";
-      this.restoring = false;
       this.emit({ type: "phase" });
-      this.startAutosave();
     });
-    emulator.add_listener("screen-set-size", (size) => {
-      this.emit({ type: "screen", size });
+    emulator.add_listener("screen-set-size", (size) => this.emit({ type: "screen", size }));
+    emulator.add_listener("download-error", (e) => {
+      this.phase = "error";
+      this.errorMessage = `Could not read the image${e && e.file_name ? ` (${e.file_name})` : ""}.`;
+      this.emit({ type: "phase" });
     });
-    // The guest writes the result of a reconnect to /dev/ttyS0; that is the only reliable way to
-    // know whether it really got online, and the UART needs nothing installed in the guest.
-    this.serialBuffer = "";
-    emulator.add_listener("serial0-output-byte", (byte) => {
-      this.serialBuffer = (this.serialBuffer + String.fromCharCode(byte & 0xff)).slice(-200);
-      if (!this.reconnecting) return;
-      if (this.serialBuffer.includes("NET-OK")) this.finishReconnect("online");
-      else if (this.serialBuffer.includes("NET-FAIL")) this.finishReconnect("failed");
-    });
-
     return emulator;
   }
 
@@ -263,99 +170,20 @@ export class LinuxVM {
   }
 
   pause() {
-    if (!this.emulator) return;
+    if (!this.emulator || this.phase !== "running") return;
     this.emulator.stop();
     this.phase = "paused";
     this.emit({ type: "phase" });
   }
 
   resume() {
-    if (!this.emulator) return;
+    if (!this.emulator || this.phase !== "paused") return;
     this.emulator.run();
     this.phase = "running";
     this.emit({ type: "phase" });
-    this.startAutosave();
   }
 
-  /* ---------- snapshots ---------- */
-
-  startAutosave() {
-    this.stopAutosave();
-    this.autosaveTimer = setInterval(() => {
-      if (document.hidden || this.phase !== "running" || this.saving) return;
-      this.saveState({ silent: true });
-    }, AUTOSAVE_MS);
-  }
-
-  stopAutosave() {
-    if (this.autosaveTimer) clearInterval(this.autosaveTimer);
-    this.autosaveTimer = 0;
-  }
-
-  /** Best-effort snapshot on unload, unless one was written in the last couple of minutes. */
-  saveOnExit() {
-    if (this.phase !== "running" || this.saving) return;
-    if (this.snapshot && Date.now() - this.snapshot.savedAt < LEAVE_SAVE_MIN_MS) return;
-    this.saveState({ silent: true });
-  }
-
-  /**
-   * Write the running machine into IndexedDB. Silent saves (timer, page hide) report nothing
-   * on success or failure; an explicit save emits progress for the Machine window.
-   */
-  async saveState({ silent = false } = {}) {
-    const emu = this.emulator;
-    if (!emu || this.phase !== "running") {
-      if (!silent) this.emit({ type: "save", state: "unavailable" });
-      return null;
-    }
-    if (this.saving) return null;
-    this.saving = true;
-    this.emit({ type: "save", state: "saving", silent });
-    const started = performance.now();
-    try {
-      // v86 serialises RAM synchronously inside this call, so expect a short pause here.
-      const blob = await emu.save_state();
-      const s = this.settings;
-      const record = {
-        blob,
-        savedAt: Date.now(),
-        imageUrl: s.imageUrl,
-        imageName: imageName(s.imageUrl),
-        memoryMB: Math.max(256, s.memoryMB || 512),
-        nic: s.nic || "ne2k",
-        backend: s.backend || "wsproxy",
-        bytes: blob.byteLength,
-      };
-      await writeSnapshot(record);
-      // Clear the flag before announcing: listeners render the status bar from it.
-      this.saving = false;
-      this.snapshot = { savedAt: record.savedAt, bytes: record.bytes };
-      this.emit({
-        type: "save", state: "saved", silent, at: record.savedAt, bytes: record.bytes,
-        ms: Math.round(performance.now() - started),
-      });
-      return record;
-    } catch (err) {
-      const message = (err && err.message) || String(err);
-      this.saving = false;
-      this.emit({ type: "save", state: "error", silent, message });
-      return null;
-    } finally {
-      this.saving = false;
-    }
-  }
-
-  /** Throw the saved machine away and cold-boot a fresh guest. */
-  async resetMachine(screenContainer) {
-    this.stopAutosave();
-    this.snapshot = null;
-    await deleteSnapshot().catch(() => undefined);
-    this.emit({ type: "save", state: "cleared" });
-    return this.boot(screenContainer, { resume: false });
-  }
-
-  /** Send text as if typed on the guest's US keyboard. */
+  /** Type text on the guest's US keyboard (used by Paste). */
   type(text) {
     if (!this.emulator) return false;
     this.emulator.keyboard_send_text(text);
@@ -367,35 +195,7 @@ export class LinuxVM {
     this.emulator.keyboard_send_scancodes([0x1c, 0x9c]);
   }
 
-  /** Type a shell command and press Enter. */
-  command(cmd) {
-    if (!this.emulator) return false;
-    this.type(cmd);
-    setTimeout(() => this.pressEnter(), 60);
-    return true;
-  }
-
-  ctrlAltDel() {
-    if (!this.emulator) return;
-    this.emulator.keyboard_send_scancodes([0x1d, 0x38, 0x53, 0xd3, 0xb8, 0x9d]);
-  }
-
-  setScale(scale) {
-    if (!this.emulator) return;
-    this.emulator.screen_set_scale(scale, scale);
-  }
-
-  focusScreen() {
-    const container = document.querySelector(".vm-screen");
-    if (container) container.focus();
-  }
-
-  /**
-   * Capture the host pointer so the guest cursor keeps receiving movement at the screen's edges
-   * instead of the real pointer wandering off. v86 asks for unadjusted movement first, which keeps
-   * the guest's cursor speed independent of the desktop's pointer acceleration. The browser only
-   * grants this from a user gesture, and Esc always hands the pointer back.
-   */
+  /** Capture the host pointer so the guest cursor keeps moving at the screen's edges. */
   lockMouse() {
     if (!this.emulator || this.phase !== "running" || document.pointerLockElement) return false;
     try {
@@ -405,68 +205,5 @@ export class LinuxVM {
     } catch {
       return false;
     }
-  }
-
-  screenshot() {
-    if (!this.emulator) return null;
-    return this.emulator.screen_make_screenshot();
-  }
-
-  /** Copy a file into the guest's 9p share so it appears under /mnt/host. */
-  async shareFile(filename, bytes) {
-    if (!this.emulator) throw new Error("Start the VM first.");
-    const safe = String(filename).replace(/[^\w.\- ]+/g, "_").slice(-120) || "file";
-    const path = `/${safe}`;
-    await this.emulator.create_file(path, bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes));
-    this.mountedPath = path;
-    return { path, guestPath: `/mnt/host/${safe}` };
-  }
-
-  mountHint() {
-    return `mkdir -p /mnt/host && mount -t 9p -o trans=virtio,version=9p2000.L ${MOUNT_TAG} /mnt/host`;
-  }
-
-  /** Bring the guest network up and refresh its package index. */
-  networkSetup() {
-    return this.command(NETWORK_SETUP_CMD);
-  }
-
-  /**
-   * Ask the guest for a fresh lease after a restore (or when the relay goes quiet). The outcome
-   * arrives on the serial port; an unanswered attempt times out after two minutes.
-   */
-  /**
-   * The relay ties its address to the tab's WebSocket session, so a socket opened before a snapshot
-   * restore never routes the restored guest. Closing and reopening it makes the relay treat this tab
-   * as a new client; the guest then only has to ask for a lease.
-   */
-  refreshRelaySocket() {
-    const adapter = this.emulator && this.emulator.network_adapter;
-    if (!adapter || typeof adapter.change_proxy !== "function") return false;
-    adapter.change_proxy(adapter.url);
-    adapter.last_connect_attempt = 0;
-    adapter.connect();
-    return true;
-  }
-
-  reconnectNetwork() {
-    if (!this.emulator || this.phase !== "running") return false;
-    this.reconnecting = true;
-    this.serialBuffer = "";
-    this.emit({ type: "net", state: "reconnecting" });
-    this.refreshRelaySocket();
-    this.command(reconnectCommand());
-    clearTimeout(this.reconnectTimer);
-    this.reconnectTimer = setTimeout(() => this.finishReconnect("timeout"), 180_000);
-    return true;
-  }
-
-  finishReconnect(state) {
-    if (!this.reconnecting) return;
-    this.reconnecting = false;
-    clearTimeout(this.reconnectTimer);
-    this.reconnectTimer = 0;
-    if (state === "online") this.networkStale = false;
-    this.emit({ type: "net", state });
   }
 }

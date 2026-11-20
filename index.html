@@ -3,129 +3,60 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>WebVM OS — a Linux desktop in your browser</title>
-  <meta name="description" content="A complete desktop operating system in the browser: Ubuntu-style shell, a real x86 Linux machine, Python, files, software installs. Runs on static hosting such as GitHub Pages." />
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='50' r='46' fill='%23e95420'/%3E%3Ctext x='50' y='68' font-size='52' text-anchor='middle' fill='white' font-family='sans-serif'%3EW%3C/text%3E%3C/svg%3E" />
+  <title>Raspberry Pi Desktop — in a browser tab</title>
+  <meta name="description" content="Raspberry Pi Desktop for PC, the Foundation's 32-bit x86 edition, booting its 3.4 GB live ISO inside a browser tab with v86." />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='50' r='46' fill='%23c51a4a'/%3E%3Ctext x='50' y='68' font-size='52' text-anchor='middle' fill='white' font-family='sans-serif'%3E%F0%9F%8D%93%3C/text%3E%3C/svg%3E" />
   <link rel="stylesheet" href="css/style.css" />
 </head>
 <body>
-  <div id="desktop">
-    <div id="wallpaper"></div>
-    <div id="desktop-icons" aria-label="Desktop icons"></div>
-    <div id="windows"></div>
+  <header id="bar">
+    <div class="brand">
+      <span class="logo" aria-hidden="true">🍓</span>
+      <span><b>Raspberry Pi Desktop</b><small>Debian 11 · 32-bit x86 · v86</small></span>
+    </div>
+    <div class="actions">
+      <span id="status" class="status">no image</span>
+      <label class="btn" for="iso">Choose ISO</label>
+      <input id="iso" type="file" accept=".iso,.img,.bin" />
+      <button id="restart" class="btn" disabled>⟲ Restart</button>
+      <button id="pause" class="btn" disabled>⏸ Pause</button>
+      <button id="paste" class="btn" disabled>📋 Paste</button>
+      <button id="full" class="btn" disabled>⛶ Fullscreen</button>
+    </div>
+  </header>
 
-    <nav id="dock" aria-label="Dock"></nav>
-
-    <div id="app-grid" hidden>
-      <div class="grid-inner">
-        <input id="grid-search" type="text" placeholder="Type to search applications…" autocomplete="off" spellcheck="false" />
-        <div id="grid-apps" class="grid-apps"></div>
-        <p class="grid-hint">Press <kbd>Esc</kbd> to close · <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>A</kbd> opens this overview</p>
+  <main id="stage">
+    <div class="screen-wrap">
+      <div id="screen_container" class="screen" tabindex="0">
+        <div class="vm-text"></div>
+        <canvas></canvas>
       </div>
-    </div>
 
-    <div id="system-menu" hidden>
-      <div class="sm-head">
-        <div class="sm-avatar">🐧</div>
-        <div class="sm-id"><strong>WebVM</strong><small id="sm-os">Alpine Linux · x86</small></div>
-      </div>
-      <div class="sm-row"><span>Network</span><b id="sm-net">relay</b></div>
-      <div class="sm-row"><span>Memory</span><b id="sm-mem">512 MB</b></div>
-      <div class="sm-row"><span>Machine</span><b id="sm-state">starting</b></div>
-      <div class="sm-sep"></div>
-      <button class="sm-item" data-act="settings"><span>⚙️</span>Settings</button>
-      <button class="sm-item" data-act="about"><span>📖</span>About this system</button>
-      <button class="sm-item" data-act="lock"><span>🔒</span>Lock screen</button>
-      <button class="sm-item" data-act="restart"><span>⟳</span>Restart machine</button>
-    </div>
-
-    <div id="lock-screen" hidden>
-      <div class="lock-clock" id="lock-clock">--:--</div>
-      <div class="lock-date" id="lock-date"></div>
-      <div class="lock-hint">Click anywhere to unlock</div>
-    </div>
-
-    <div id="toasts" aria-live="polite"></div>
-
-    <div id="desktop-menu" hidden>
-      <button class="sm-item" data-act="apps"><span>⊞</span>Show applications</button>
-      <button class="sm-item" data-act="machine"><span>🖥️</span>Machine</button>
-      <button class="sm-item" data-act="settings"><span>⚙️</span>Change wallpaper…</button>
-      <button class="sm-item" data-act="keys"><span>⌨️</span>Keyboard shortcuts</button>
-      <div class="sm-sep"></div>
-      <button class="sm-item" data-act="restart"><span>⟳</span>Restart machine</button>
-      <button class="sm-item" data-act="lock"><span>🔒</span>Lock screen</button>
-      <button class="sm-item" data-act="about"><span>📖</span>About this system</button>
-    </div>
-
-    <div id="switcher" hidden></div>
-
-    <div id="shortcuts" hidden>
-      <div class="sc-card">
-        <h2>Keyboard &amp; mouse</h2>
-        <div class="sc-grid">
-          <div><span class="sc-keys"><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>T</kbd></span><span>Machine window</span></div>
-          <div><span class="sc-keys"><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>A</kbd></span><span>Application overview</span></div>
-          <div><span class="sc-keys"><kbd>Alt</kbd>+<kbd>&#96;</kbd></span><span>Switch between windows</span></div>
-          <div><span class="sc-keys"><kbd>F1</kbd></span><span>Show this sheet</span></div>
-          <div><span class="sc-keys"><kbd>Esc</kbd></span><span>Close menus · release the guest mouse</span></div>
-          <div><span class="sc-keys">Drag to an edge</span><span>Tile the window left or right</span></div>
-          <div><span class="sc-keys">Drag to the top</span><span>Fill the screen</span></div>
-          <div><span class="sc-keys">Right-click desktop</span><span>System menu</span></div>
-        </div>
-        <div class="row" style="justify-content:flex-end;margin-top:16px">
-          <button class="btn primary" data-act="close">Close</button>
+      <div id="overlay">
+        <div class="card">
+          <div class="berry" aria-hidden="true">🍓</div>
+          <h1>Raspberry Pi Desktop</h1>
+          <p class="sub">The Foundation's 32-bit x86 edition of the Pi's desktop, booting for real in this tab.</p>
+          <ol class="steps">
+            <li>Download <a href="https://www.raspberrypi.com/software/raspberry-pi-desktop/" target="_blank" rel="noopener">the 2022-07-01 i386 ISO</a> (3.4 GB). The 2026 build is amd64-only and cannot run here.</li>
+            <li>Choose it below. It is never copied into memory: the emulator reads 512 KiB slices from the file as the guest needs them.</li>
+            <li>Wait. A cold boot prints kernel messages for a few minutes before the system is up.</li>
+          </ol>
+          <label class="pick" for="iso">Choose the ISO file</label>
+          <p id="note" class="note">Nothing loaded yet.</p>
         </div>
       </div>
     </div>
+  </main>
 
-    <div id="boot-splash">
-      <div class="splash-card">
-        <div class="splash-logo">🐧</div>
-        <h1>WebVM OS</h1>
-        <p class="splash-sub">A complete desktop, running entirely in your browser</p>
-        <div class="splash-bar"><i id="splash-fill"></i></div>
-        <p id="splash-status" class="splash-status">Preparing the machine…</p>
-        <button id="splash-retry" class="btn primary" style="margin-top:12px" hidden onclick="location.reload()">Reload the page</button>
-        <p class="splash-foot" id="splash-foot">Alpine Linux · 32-bit x86 · v86 engine</p>
-      </div>
-    </div>
-
-    <header id="topbar">
-      <button id="activities" class="tb-btn">Activities</button>
-      <div id="topbar-title">WebVM OS</div>
-      <div id="topbar-right">
-        <button id="tray-net" class="tb-btn" title="Guest network backend">net</button>
-        <button id="tray-clock" class="tb-btn" title="Date and time">--:--</button>
-        <button id="system-btn" class="tb-btn" title="System menu">▾</button>
-      </div>
-    </header>
-  </div>
-
-  <noscript>
-    <p style="padding:2rem;font-family:system-ui;color:#fff">WebVM needs JavaScript and WebAssembly to run.</p>
-  </noscript>
+  <footer id="foot">
+    <span id="phase">idle</span>
+    <span id="detail"></span>
+    <span class="grow"></span>
+    <span class="credit">Raspberry Pi Desktop © Raspberry Pi Ltd · v86 emulator (BSD-2-Clause)</span>
+  </footer>
 
   <script src="vm/libv86.js"></script>
-  <script>
-    // A single failed module fetch (a host hiccup, a flaky network) otherwise leaves the boot
-    // splash sitting on "Preparing the machine…" forever, with nothing to act on.
-    window.__bootFailed = function (reason) {
-      var status = document.getElementById("splash-status");
-      var fill = document.getElementById("splash-fill");
-      var retry = document.getElementById("splash-retry");
-      if (!status || !status.isConnected) return;
-      status.textContent = "A boot file could not be downloaded" + (reason ? " (" + reason + ")" : "") +
-        ". Check your connection, then reload.";
-      if (fill) fill.style.width = "100%";
-      if (retry) retry.hidden = false;
-    };
-  </script>
-  <script type="module" src="js/main.js" onerror="window.__bootFailed && window.__bootFailed('module load error')"></script>
-  <script>
-    window.addEventListener("unhandledrejection", function (event) {
-      if (window.__bootFailed && !window.webvm) window.__bootFailed(String((event.reason && event.reason.message) || event.reason || "").slice(0, 120));
-    });
-  </script>
+  <script type="module" src="js/main.js"></script>
 </body>
 </html>
