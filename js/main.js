@@ -140,6 +140,25 @@ isoInput.addEventListener("change", () => {
   if (file) start(file);
 });
 
+// Dropping the ISO anywhere on the page starts it, so the picker is not the only way in.
+["dragenter", "dragover"].forEach((type) =>
+  document.addEventListener(type, (event) => {
+    event.preventDefault();
+    document.body.classList.add("dropping");
+  }),
+);
+["dragleave", "dragend"].forEach((type) =>
+  document.addEventListener(type, (event) => {
+    if (event.relatedTarget === null) document.body.classList.remove("dropping");
+  }),
+);
+document.addEventListener("drop", (event) => {
+  event.preventDefault();
+  document.body.classList.remove("dropping");
+  const file = event.dataTransfer && event.dataTransfer.files && event.dataTransfer.files[0];
+  if (file) start(file);
+});
+
 /* ---------- controls ---------- */
 
 restartBtn.addEventListener("click", () => {

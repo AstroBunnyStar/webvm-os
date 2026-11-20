@@ -38,12 +38,19 @@
           <h1>Raspberry Pi Desktop</h1>
           <p class="sub">The Foundation's 32-bit x86 edition of the Pi's desktop, booting for real in this tab.</p>
           <ol class="steps">
-            <li>Download <a href="https://www.raspberrypi.com/software/raspberry-pi-desktop/" target="_blank" rel="noopener">the 2022-07-01 i386 ISO</a> (3.4 GB). The 2026 build is amd64-only and cannot run here.</li>
-            <li>Choose it below. It is never copied into memory: the emulator reads 512 KiB slices from the file as the guest needs them.</li>
+            <li>Get the ISO below: the 2022-07-01 <code>i386</code> build, 3.4 GB. The October 2026 build is <code>amd64</code>-only and cannot run on this CPU.</li>
+            <li>Choose the file, or drop it anywhere on this page. It is never copied into memory: the emulator reads 512 KiB slices from it as the guest asks.</li>
             <li>Wait. A cold boot prints kernel messages for a few minutes before the system is up.</li>
           </ol>
-          <label class="pick" for="iso">Choose the ISO file</label>
-          <p id="note" class="note">Nothing loaded yet.</p>
+
+          <div class="download">
+            <a class="cta" id="getiso" href="https://downloads.raspberrypi.com/rpd_x86/images/rpd_x86-2022-07-04/2022-07-01-raspios-bullseye-i386.iso">⬇ Download the ISO · 3.4 GB</a>
+            <p class="hash">sha256 <code id="hash">5fa906df25e600bf7d7e6a5eb7b0e9b6605e60992ee6c8efe79bc99e7c2452bd</code></p>
+            <p class="claim">The image comes from Raspberry Pi's own download server, not from this site: GitHub Pages refuses files over 100 MB, and this one is 3.4 GB.</p>
+          </div>
+
+          <label class="pick" for="iso">I already have it — choose the file</label>
+          <p id="note" class="note">Nothing loaded yet. Drop the .iso here at any time.</p>
         </div>
       </div>
     </div>

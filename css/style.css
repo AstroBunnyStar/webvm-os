@@ -129,6 +129,9 @@ body {
 }
 #screen_container::backdrop { background: #000; }
 
+/* A file dragged over the page: show where it will land. */
+body.dropping .screen-wrap { outline: 2px dashed var(--berry); outline-offset: -6px; }
+
 /* ---------- boot overlay ---------- */
 #overlay {
   position: absolute;
@@ -162,6 +165,41 @@ body {
 }
 .steps a { color: #ff9db8; }
 
+.download {
+  display: grid;
+  gap: 8px;
+  justify-items: center;
+  margin: 0 0 18px;
+}
+
+.cta {
+  display: inline-block;
+  padding: 12px 22px;
+  border-radius: 10px;
+  background: var(--berry);
+  color: #fff;
+  font-weight: 600;
+  font-size: 15px;
+  text-decoration: none;
+}
+.cta:hover { background: #d9215a; }
+
+.hash {
+  margin: 0;
+  color: var(--muted);
+  font-size: 11.5px;
+  word-break: break-all;
+  max-width: 46ch;
+}
+.hash code { font-family: "Cascadia Mono", Consolas, monospace; color: #c9c1bd; }
+
+.claim {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  max-width: 52ch;
+}
+
 .pick {
   display: inline-block;
   padding: 10px 18px;
@@ -172,6 +210,17 @@ body {
   cursor: pointer;
 }
 .pick:hover { background: #d9215a; }
+
+/* Short windows: tighten the card so the download and the picker both fit without scrolling. */
+@media (max-height: 820px) {
+  .berry { display: none; }
+  .card h1 { font-size: 20px; }
+  .card .sub { margin-bottom: 12px; font-size: 13px; }
+  .steps { font-size: 12.5px; gap: 5px; margin-bottom: 12px; }
+  .download { margin-bottom: 12px; gap: 6px; }
+  .cta { padding: 9px 16px; font-size: 14px; }
+  .pick { padding: 8px 15px; font-size: 13px; }
+}
 
 .note { color: var(--muted); font-size: 12.5px; margin: 12px 0 0; }
 .note.err { color: var(--err); }

@@ -18,11 +18,16 @@ last i386 release; the October 2026 build is `amd64`-only and cannot run on this
 
 ## Using it
 
-1. Download `2022-07-01-raspios-bullseye-i386.iso` (3.4 GB) from the Foundation's download page.
-2. Open the page and choose that file.
+1. Get the ISO: [2022-07-01-raspios-bullseye-i386.iso](https://downloads.raspberrypi.com/rpd_x86/images/rpd_x86-2022-07-04/2022-07-01-raspios-bullseye-i386.iso)
+   (3,607,101,440 bytes, sha256 `5fa906df25e600bf7d7e6a5eb7b0e9b6605e60992ee6c8efe79bc99e7c2452bd`).
+2. Choose that file on the page, or drop it anywhere on it.
 3. Wait. A cold boot prints kernel messages for a few minutes before the system is up.
 
 Nothing is uploaded and nothing is cached: the file stays on your disk.
+
+The 3.4 GB image is not stored in this repository, and cannot be: GitHub rejects blobs over 100 MB and
+caps a published Pages site at 1 GB. The page links Raspberry Pi's own download server instead and shows
+the checksum, so the ISO is one click from the site but still served by the people who build it.
 
 ## How the image gets in
 
