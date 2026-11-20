@@ -11,7 +11,7 @@ export const PI_IMAGE = {
   label: "3.4 GB · i386 live ISO",
 };
 
-export const RELAY_URL = "wss://relay.widgetry.org/";
+export const RELAY_URL = "wss://wisp.anjomous.workers.dev/";
 export const MEMORY_MB = 1024;
 
 // The image the page boots by itself. Raspberry Pi's own server sends no CORS headers, so a browser cannot
