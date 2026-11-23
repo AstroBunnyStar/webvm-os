@@ -3,27 +3,30 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Raspberry Pi Desktop — in a browser tab</title>
-  <meta name="description" content="Raspberry Pi Desktop for PC, the Foundation's 32-bit x86 edition, booting its 3.4 GB live ISO inside a browser tab with v86." />
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='50' r='46' fill='%23c51a4a'/%3E%3Ctext x='50' y='68' font-size='52' text-anchor='middle' fill='white' font-family='sans-serif'%3E%F0%9F%8D%93%3C/text%3E%3C/svg%3E" />
+  <title>x86 machines — in a browser tab</title>
+  <meta name="description" content="Real 32-bit x86 PCs booting in a browser tab with v86: every current Linux distro that still ships i386, plus Windows as far as the emulator allows." />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect x='8' y='4' width='84' height='92' rx='10' fill='%231c1917'/%3E%3Crect x='20' y='18' width='60' height='34' rx='4' fill='%23c51a4a'/%3E%3Crect x='20' y='60' width='60' height='8' rx='4' fill='%23a89f9a'/%3E%3Crect x='20' y='76' width='40' height='6' rx='3' fill='%232e2926'/%3E%3C/svg%3E" />
   <link rel="stylesheet" href="css/style.css" />
 </head>
 <body>
   <header id="bar">
     <div class="brand">
-      <span class="logo" aria-hidden="true">🍓</span>
-      <span><b>Raspberry Pi Desktop</b><small>32-bit x86 · v86 emulator</small></span>
+      <span class="logo" aria-hidden="true">💿</span>
+      <span><b id="brand-name">x86 machines</b><small id="brand-sub">v86 emulator · boots in a tab</small></span>
     </div>
     <div class="actions">
       <span id="status" class="status">stopped</span>
       <button id="start" class="btn primary">▶ Start</button>
-      <label class="btn" for="iso">Choose ISO</label>
-      <input id="iso" type="file" accept=".iso,.img,.bin" />
+      <label class="btn" for="iso">Choose image</label>
+      <input id="iso" type="file" accept=".iso,.img,.bin,.raw" />
       <button id="restart" class="btn" disabled>⟲ Restart</button>
       <button id="pause" class="btn" disabled>⏸ Pause</button>
       <button id="paste" class="btn" disabled>📋 Paste</button>
       <button id="full" class="btn" disabled>⛶ Fullscreen</button>
+      <button id="serial-open" class="btn" title="Guest serial console">🖥 Serial</button>
+      <button id="relays-open" class="btn" title="Wisp image relay">🌐 Relay</button>
       <button id="settings-open" class="btn" title="Machine settings">⚙ Settings</button>
+      <button id="machines" class="btn" title="Pick a different machine">💿 Machines</button>
     </div>
   </header>
 
@@ -35,16 +38,21 @@
       </div>
 
       <div id="overlay">
-        <div class="card">
-          <div class="berry" aria-hidden="true">🍓</div>
-          <h1>Raspberry Pi Desktop</h1>
-          <p class="sub">The Foundation's 32-bit x86 edition of the Pi's desktop, booting for real in this tab.</p>
-          <button id="start-big" class="primary">▶ Start the machine</button>
-          <p class="note" id="bootmsg">Nothing starts until you press Start: each boot streams about 3.4 GB (≈430 range requests) from the shared image proxy.</p>
-          <p class="claim">A cold boot prints kernel messages for a few minutes before the system is up.</p>
-          <div id="fallback" hidden>
-            <p class="claim" id="note">If the stream does not start, boot a local copy of the 2022-07-01 ISO instead:</p>
-            <label class="pick" for="iso">Choose an ISO file</label>
+        <div class="card wide">
+          <h1>Boot a machine</h1>
+          <p class="sub">
+            Each one is a real 32-bit x86 PC running in this tab: the current Linux releases that still build
+            for that CPU, and Windows as far as the emulator can go.
+          </p>
+          <div id="catalog" class="catalog"><p class="note">Loading the machine list…</p></div>
+          <p class="note" id="bootmsg">
+            Nothing boots until you pick a machine. Each boot streams only the blocks the guest asks for, so
+            opening the page costs the image proxy nothing.
+          </p>
+          <p class="claim">A cold boot prints kernel messages for a while before the system is up.</p>
+          <div id="fallback">
+            <p class="claim" id="note">Have your own image? An .iso, .img or .bin boots straight from disk.</p>
+            <label class="pick" for="iso">Choose an image file</label>
           </div>
         </div>
       </div>
@@ -55,7 +63,7 @@
     <span id="phase">idle</span>
     <span id="detail"></span>
     <span class="grow"></span>
-    <span class="credit">Raspberry Pi Desktop © Raspberry Pi Ltd · v86 emulator (BSD-2-Clause)</span>
+    <span class="credit" id="credit">v86 emulator (BSD-2-Clause)</span>
   </footer>
 
   <dialog id="settings">
@@ -65,6 +73,7 @@
       <label class="field">
         <span>Memory</span>
         <select id="set-memory">
+          <option value="256">256 MB</option>
           <option value="512">512 MB</option>
           <option value="1024">1024 MB</option>
           <option value="1536">1536 MB</option>
@@ -84,11 +93,6 @@
       </label>
 
       <label class="field">
-        <span>Image URL</span>
-        <input id="set-image" type="url" spellcheck="false" />
-      </label>
-
-      <label class="field">
         <span>Network relay</span>
         <input id="set-relay" type="text" spellcheck="false" />
       </label>
@@ -100,6 +104,47 @@
         <button class="btn primary" id="settings-save" value="save">Save</button>
       </div>
     </form>
+  </dialog>
+
+  <dialog id="serial">
+    <div class="serial-panel">
+      <h2>Serial console</h2>
+      <p class="note">
+        Every byte the guest writes to its first serial port, captured from the emulator as it arrives. The
+        Raspberry Pi ISO is booted with <code>console=ttyS0</code> and journald's console forwarding, so its
+        kernel messages and each service's own output — LightDM's included — appear here even while X, or a
+        greeter that never paints, holds the screen. Other images only print here if their own boot command
+        line sets up a serial console.
+      </p>
+      <p class="note" id="serial-state">Nothing captured yet.</p>
+      <pre id="serial-log" class="serial-log" aria-live="polite"></pre>
+      <div class="row">
+        <button id="serial-clear" class="btn" type="button">Clear</button>
+        <button id="serial-close" class="btn primary" type="button">Done</button>
+      </div>
+    </div>
+  </dialog>
+
+  <dialog id="relays">
+    <div class="relay-panel">
+      <h2>Wisp relays</h2>
+      <p class="note">
+        Reads go straight to the image proxy by default. Choosing a relay adds a hop that a blocked
+        network can still reach; TLS ends in this tab, so the relay only carries ciphertext. Relay reads
+        are experimental — the list comes from
+        <a href="https://github.com/AstroBunnyStar/wispscope" target="_blank" rel="noreferrer">WispScope</a>.
+      </p>
+      <div class="relay-bar">
+        <input id="relay-search" type="search" placeholder="Filter relays" spellcheck="false" />
+        <button id="relay-scan" class="btn" type="button">Scan all</button>
+        <button id="relay-direct" class="btn" type="button">Use direct</button>
+      </div>
+      <p class="note" id="relay-state">Not scanned yet.</p>
+      <ul id="relay-list" class="relay-list"></ul>
+      <div class="row">
+        <button id="relay-close" class="btn primary" type="button">Done</button>
+      </div>
+    </div>
   </dialog>
 
   <script src="vm/libv86.js"></script>
